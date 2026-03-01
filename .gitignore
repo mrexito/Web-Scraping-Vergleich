@@ -1,11 +1,44 @@
+<<<<<<< HEAD
 # Logs
 logs
 *.log
+=======
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+.yarn/install-state.gz
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production builds
+/build
+/dist
+
+# local environment variables (secrets)
+.env
+.env.local
+.env.*.local
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+>>>>>>> aeb13cc (Cleanup gitignore and remove build artifacts)
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
 
+<<<<<<< HEAD
 # Dependency directories
 node_modules/
 jspm_packages/
@@ -21,6 +54,10 @@ web_modules/
 !.yarn/sdks
 !.yarn/versions
 .yarn/install-state.gz
+=======
+# vercel
+.vercel
+>>>>>>> aeb13cc (Cleanup gitignore and remove build artifacts)
 
 # Testing / coverage
 coverage
@@ -49,5 +86,9 @@ build
 *.tsbuildinfo
 next-env.d.ts
 
+<<<<<<< HEAD
 # Vercel
 .vercel
+=======
+
+>>>>>>> aeb13cc (Cleanup gitignore and remove build artifacts)
