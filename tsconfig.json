@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "es5",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": false,
+    "esModuleInterop": true,
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "outDir": "./dist",
+    "rootDir": "./",
+    "baseUrl": ".", //Basis für Pfadauslösung
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": ["./*"], //Genereller Alias
+      "@utils/*": ["./utils/*"] // Spezifischer Alias für "utils"
+    }
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules"]
+}

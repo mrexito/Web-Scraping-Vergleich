@@ -1,0 +1,41 @@
+{
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test": "jest",
+    "clear_jest": "jest --clearCache",
+    "generate": "npx supabase gen types --lang=typescript --project-id anwzvgwokuwgraytutsa --schema public > database.types.ts"
+  },
+  "dependencies": {
+    "@flaticon/flaticon-uicons": "^3.0.0",
+    "@supabase/ssr": "^0.5.2",
+    "@supabase/supabase-js": "^2.47.10",
+    "autoprefixer": "10.4.15",
+    "chai": "^5.0.0",
+    "dotenv": "^16.4.7",
+    "geist": "^1.0.0",
+    "next": "^15.0.3",
+    "postcss": "^8.4.48",
+    "puppeteer": "^23.11.1",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "tailwindcss": "3.3.3"
+  },
+  "devDependencies": {
+    "@babel/plugin-transform-modules-commonjs": "^7.23.3",
+    "@testing-library/jest-dom": "^6.2.0",
+    "@testing-library/react": "^14.1.2",
+    "@types/chai": "^4.3.11",
+    "@types/jest": "^29.5.11",
+    "@types/node": "20.3.1",
+    "@types/react": "18.2.8",
+    "@types/react-dom": "18.2.5",
+    "encoding": "^0.1.13",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0",
+    "ts-jest": "^29.1.1",
+    "typescript": "^5.3.3"
+  }
+}
