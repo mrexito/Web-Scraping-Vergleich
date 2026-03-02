@@ -1,7 +1,7 @@
+@import "@flaticon/flaticon-uicons/css/all/all.css";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-@import "~@flaticon/flaticon-uicons/css/all/all";
 
 @layer base {
   :root {
