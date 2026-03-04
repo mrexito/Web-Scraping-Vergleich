@@ -86,12 +86,12 @@ const GymiProviderOverview = ({ gymiProviders, courseDetails }: GymiProviderOver
                                                         <div className="relative mx-auto w-full">
                                                             <div className="shadow p-4 rounded-lg bg-white">
                                                                 <h2 className="font-medium text-lg">{selectedProvider.provider || 'Name nicht verfügbar'}</h2>
-                                                                <div className="grid grid-cols-2 gap-4 mt-4">
-                                                                    <p>Preis-Leistungs-Verhältnis: {selectedProvider.pricePerformance || 'Nicht verfügbar'}</p>
-                                                                    <p>Qualität des Unterrichts: {selectedProvider.quality || 'Nicht verfügbar'}</p>
-                                                                    <p>Flexibilität: {selectedProvider.flexibility || 'Nicht verfügbar'}</p>
-                                                                    <p>Zusatzleistungen: {selectedProvider.additionalServices || 'Nicht verfügbar'}</p>
-                                                                    <p>Standort: {selectedProvider.location || 'Nicht verfügbar'}</p>
+                                                                <div className="flex flex-col gap-2 mt-4">
+                                                                    <p><span className="font-medium">Preis-Leistungs-Verhältnis:</span> {selectedProvider.pricePerformance || 'Nicht verfügbar'}</p>
+                                                                    <p><span className="font-medium">Qualität des Unterrichts:</span> {selectedProvider.quality || 'Nicht verfügbar'}</p>
+                                                                    <p><span className="font-medium">Flexibilität:</span> {selectedProvider.flexibility || 'Nicht verfügbar'}</p>
+                                                                    <p><span className="font-medium">Zusatzleistungen:</span> {selectedProvider.additionalServices || 'Nicht verfügbar'}</p>
+                                                                    <p><span className="font-medium">Standort:</span> {selectedProvider.location || 'Nicht verfügbar'}</p>
                                                                 </div>
                                                                 {selectedProvider.URL && selectedProvider.URL.length > 0 ? (
                                                                     <div className="mt-4">

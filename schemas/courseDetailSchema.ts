@@ -8,10 +8,10 @@ export const CourseDetailSchema = z.object({
     .nullable()
     .optional(),
   Unterrichttag: z.string().nullable().optional(),
-  'Dauer der Kurse in Std. Kurzzeitkurs': z.number().positive().nullable().optional(),
+  'Dauer der Kurse in Std. Kurzzeitkurs': z.number().nonnegative().nullable().optional(),
   'Dauer der Kurse in Wochen Langzeitkurs': z.number().positive().nullable().optional(),
 
-  'Preis pro Std. Intensiverkurs': z.number().positive().nullable().optional(),
+  'Preis pro Std. Intensiverkurs': z.number().nonnegative().nullable().optional(),
   'Preis pro Woche Langzeitkurs': z.number().positive().nullable().optional(),
 
   Standort: z.string().nullable().optional(),
