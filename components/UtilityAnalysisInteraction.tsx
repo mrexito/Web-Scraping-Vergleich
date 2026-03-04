@@ -9,21 +9,29 @@ import {
 } from '../utils/utilityAnalysis/calculation';
 import { checkForm } from '../utils/utilityAnalysis/checkForm';
 import GymiProviderOverview, { RatedGymiProviders } from './GymiProviderOverview';
-import { Database } from "@/database.types";
+import type { GymiProvider } from '@/schemas/gymiProviderSchema';
+import type { CourseDetail } from '@/schemas/courseDetailSchema';
 
 export interface TransformedGymiProviders {
   id: number;
   name: string;
   pricePerformance: string | number;
   additionalServices: string;
-  URL?: string[] | null; // URL hinzugefügt
+  URL?: string[] | null;
+  // Felder die calculation.tsx braucht
+  'Preis-Kategorie': 'A' | 'B' | 'C';
+  'Maximale Anzahl der Teilnehmer'?: string | null;
+  'E-Learning': boolean;
+  Aufsatzkorrektur: boolean;
+  Einzelkurse: boolean;
+  'Intensiver Kurs': boolean;
+  Einstufungstest: boolean;
+  Onlinepruefung: boolean;
 }
-
-type CourseDetailsType = Database['public']['Tables']['CourseDetails']['Row'];
 
 interface UtilityAnalysisInteractionProps {
   GymiProviders: TransformedGymiProviders[];
-  CourseDetails: CourseDetailsType[];
+  CourseDetails: CourseDetail[];
 }
 
 const UtilityAnalysisInteraction = ({ GymiProviders, CourseDetails }: UtilityAnalysisInteractionProps) => {
@@ -36,32 +44,29 @@ const UtilityAnalysisInteraction = ({ GymiProviders, CourseDetails }: UtilityAna
     { id: 5, weight: '', criteria: '' },
   ]);
 
-  // Gewichtung ändern
   const handleTitleChange = (index: number, newWeight: string) => {
     const updatedParams = [...params];
     updatedParams[index].weight = newWeight;
     setParams(updatedParams);
   };
 
-  // Kriterium ändern
   const handleContentChange = (index: number, newCriteria: string) => {
     const updatedParams = [...params];
     updatedParams[index].criteria = newCriteria;
     setParams(updatedParams);
   };
 
-  // Scoring berechnen
   const saveChanges = () => {
     const correctForm = checkForm(params);
     if (correctForm === true) {
       if (GymiProviders && GymiProviders.length > 0) {
         const mappedProviders: RatedGymiProviders[] = GymiProviders.map((provider) => {
-          const courseDetail = CourseDetails.find((detail) => detail.ID === provider.id) || {};
+          const courseDetail = CourseDetails.find((detail) => detail.ID === provider.id) ?? {};
 
-          const pricePerformance = calculatePricePerformance(provider, Number(params.find(p => p.criteria === 'price-performance')?.weight) || 0);
+          const pricePerformance = calculatePricePerformance(provider as unknown as GymiProvider, Number(params.find(p => p.criteria === 'price-performance')?.weight) || 0);
           const quality = calculateQuality(courseDetail, Number(params.find(p => p.criteria === 'quality')?.weight) || 0);
           const flexibility = calculateFlexibility(courseDetail, Number(params.find(p => p.criteria === 'flexibility')?.weight) || 0);
-          const additionalServices = calculateAdditionalServices(provider, courseDetail, Number(params.find(p => p.criteria === 'additional-services')?.weight) || 0);
+          const additionalServices = calculateAdditionalServices(provider as unknown as GymiProvider, courseDetail, Number(params.find(p => p.criteria === 'additional-services')?.weight) || 0);
           const location = calculateLocation(courseDetail, Number(params.find(p => p.criteria === 'location')?.weight) || 0);
 
           const totalScore = Math.round(pricePerformance + quality + flexibility + additionalServices + location);
@@ -75,14 +80,13 @@ const UtilityAnalysisInteraction = ({ GymiProviders, CourseDetails }: UtilityAna
             additionalServices,
             location,
             totalScore,
-            URL: provider.URL?.length ? provider.URL : [] // URLs sicher übertragen
+            URL: provider.URL?.length ? provider.URL : []
           };
         });
 
         const ratedGymiProvidersList = mappedProviders.sort((a, b) => b.totalScore - a.totalScore);
         setRatedGymiProviders(ratedGymiProvidersList);
       } else {
-        console.error("No data available for Gymi providers");
         alert("Keine Daten für Gymi-Anbieter verfügbar.");
       }
     } else {
@@ -90,7 +94,6 @@ const UtilityAnalysisInteraction = ({ GymiProviders, CourseDetails }: UtilityAna
     }
   };
 
-  // Liste zurücksetzen
   const deleteList = () => {
     setRatedGymiProviders([]);
     setParams([

@@ -1,136 +1,89 @@
+// utils/utilityAnalysis/calculation.tsx
+import type { GymiProvider } from '@/schemas/gymiProviderSchema';
+import type { CourseDetail } from '@/schemas/courseDetailSchema';
+
 // 1. Preis-Leistungs-Verhältnis
-export const calculatePricePerformance = (provider: any, weight: number) => {
-  let scorePricePerformance = 0;
+export const calculatePricePerformance = (provider: GymiProvider, weight: number): number => {
+  let score = 0;
 
-  // Punkte basierend auf Preiskategorie
-  if (provider['Preis-Kategorie'] === 'A') {
-      scorePricePerformance += 3;
-  } else if (provider['Preis-Kategorie'] === 'B') {
-      scorePricePerformance += 2;
-  } else if (provider['Preis-Kategorie'] === 'C') {
-      scorePricePerformance += 1;
-  }
+  if (provider['Preis-Kategorie'] === 'A') score += 3;
+  else if (provider['Preis-Kategorie'] === 'B') score += 2;
+  else if (provider['Preis-Kategorie'] === 'C') score += 1;
 
-  // Punkte basierend auf der Maximalen Teilnehmeranzahl
-  const maxParticipants = parseInt(provider['Maximale Anzahl der Teilnehmer']);
-  if (maxParticipants >= 1 && maxParticipants <= 5) {
-      scorePricePerformance += 3;
-  } else if (maxParticipants >= 6 && maxParticipants <= 10) {
-      scorePricePerformance += 2;
-  } else if (maxParticipants >= 11 && maxParticipants <= 15) {
-      scorePricePerformance += 1;
-  }
+  const maxParticipants = parseInt(provider['Maximale Anzahl der Teilnehmer'] ?? '0', 10);
+  if (maxParticipants >= 1 && maxParticipants <= 5) score += 3;
+  else if (maxParticipants >= 6 && maxParticipants <= 10) score += 2;
+  else if (maxParticipants >= 11 && maxParticipants <= 15) score += 1;
 
-  // Finale Bewertung
-  if (scorePricePerformance >= 5) {
-      scorePricePerformance = 3;
-  } else if (scorePricePerformance >= 3) {
-      scorePricePerformance = 2;
-  } else {
-      scorePricePerformance = 1;
-  }
-
-  // Normalisierung und Gewichtung
-  return Math.round((scorePricePerformance / 3) * weight);
+  const normalized = score >= 5 ? 3 : score >= 3 ? 2 : 1;
+  return Math.round((normalized / 3) * weight);
 };
 
 // 2. Qualität des Unterrichts
-export const calculateQuality = (courseDetail: any, weight: number) => {
-  let scoreQuality = 0;
+export const calculateQuality = (courseDetail: Partial<CourseDetail>, weight: number): number => {
+  let score = 0;
 
-  // Punkte basierend Qualitätsbewertung
-  if (courseDetail.Qualitaetsbewertung === 1) {
-      scoreQuality = 3;
-  } else if (courseDetail.Qualitaetsbewertung === 2) {
-      scoreQuality = 2;
-  } else if (courseDetail.Qualitaetsbewertung === 3) {
-      scoreQuality = 1;
-  }
+  if (courseDetail.Qualitaetsbewertung === 1) score = 3;
+  else if (courseDetail.Qualitaetsbewertung === 2) score = 2;
+  else if (courseDetail.Qualitaetsbewertung === 3) score = 1;
 
-  // Normalisierung und Gewichtung
-  return Math.round((scoreQuality / 3) * weight);
+  return Math.round((score / 3) * weight);
 };
 
 // 3. Flexibilität der Kursgestaltung
-export const calculateFlexibility = (courseDetail: any, weight: number) => {
-  let scoreFlexibility = 0;
+export const calculateFlexibility = (courseDetail: Partial<CourseDetail>, weight: number): number => {
+  let score = 0;
 
-  // Unterrichtstage zählen
-  const days = Array.isArray(courseDetail['Unterrichttag'])
-      ? courseDetail['Unterrichttag'].length
-      : courseDetail['Unterrichttag']
-      ? courseDetail['Unterrichttag'].split(',').length
-      : 0;
+  const unterrichttag = courseDetail['Unterrichttag'];
+  const days = Array.isArray(unterrichttag)
+    ? unterrichttag.length
+    : unterrichttag
+    ? unterrichttag.split(',').length
+    : 0;
 
-  if (days === 4) {
-      scoreFlexibility += 3;
-  } else if (days === 3) {
-      scoreFlexibility += 2;
-  } else if (days >= 1) {
-      scoreFlexibility += 1;
-  }
+  if (days === 4) score += 3;
+  else if (days === 3) score += 2;
+  else if (days >= 1) score += 1;
 
-  // Kursart bewerten
-  if (courseDetail['Kursart (Intensiv- oder Langzeitkurs)'] === 'Beides') {
-      scoreFlexibility += 2;
-  } else if (courseDetail['Kursart (Intensiv- oder Langzeitkurs)'] === 'Lang') {
-      scoreFlexibility += 1;
-  }
+  if (courseDetail['Kursart (Intensiv- oder Langzeitkurs)'] === 'Beides') score += 2;
+  else if (courseDetail['Kursart (Intensiv- oder Langzeitkurs)'] === 'Lang') score += 1;
 
-  // Finale Bewertung
-  if (scoreFlexibility >= 4) {
-      scoreFlexibility = 3;
-  } else if (scoreFlexibility === 3) {
-      scoreFlexibility = 2;
-  } else {
-      scoreFlexibility = 1;
-  }
-
-  return Math.round((scoreFlexibility / 3) * weight);
+  const normalized = score >= 4 ? 3 : score === 3 ? 2 : 1;
+  return Math.round((normalized / 3) * weight);
 };
 
-// 4. Zusatzleistungen berechnen
-export const calculateAdditionalServices = (provider: any, courseDetail: any, weight: number) => {
-  let scoreAdditionalServices = 0;
+// 4. Zusatzleistungen
+export const calculateAdditionalServices = (
+  provider: GymiProvider,
+  courseDetail: Partial<CourseDetail>,
+  weight: number
+): number => {
+  let score = 0;
 
-  // Zusatzleistungen 
-  scoreAdditionalServices += provider['E-Learning'] ? 2 : 1;
-  scoreAdditionalServices += courseDetail['Eigene Lernunterlagen'] ? 2 : 1;  
-  scoreAdditionalServices += courseDetail['Nachholmoeglichkeiten'] ? 2 : 1;  
-  scoreAdditionalServices += courseDetail['Unterstuezung ausserhalb Unterrichtszeit'] ? 2 : 1; 
-  scoreAdditionalServices += courseDetail['Pruefungsarchiv'] ? 2 : 1;  
-  scoreAdditionalServices += provider['Aufsatzkorrektur'] ? 2 : 1;
+  score += provider['E-Learning'] ? 2 : 1;
+  score += courseDetail['Eigene Lernunterlagen'] ? 2 : 1;
+  score += courseDetail['Nachholmoeglichkeiten'] ? 2 : 1;
+  score += courseDetail['Unterstuezung ausserhalb Unterrichtszeit'] ? 2 : 1;
+  score += courseDetail['Pruefungsarchiv'] ? 2 : 1;
+  score += provider.Aufsatzkorrektur ? 2 : 1;
 
-  // Finale Bewertung
-  if (scoreAdditionalServices >= 5) {
-      scoreAdditionalServices = 3;
-  } else if (scoreAdditionalServices >= 3) {
-      scoreAdditionalServices = 2;
-  } else {
-      scoreAdditionalServices = 1;
-  }
-
-  return Math.round((scoreAdditionalServices / 3) * weight);
+  const normalized = score >= 5 ? 3 : score >= 3 ? 2 : 1;
+  return Math.round((normalized / 3) * weight);
 };
 
-// 5. Berechnet Standort 
-export const calculateLocation = (courseDetail: any, weight: number) => {
-  let scoreLocation = 0;
+// 5. Standort
+export const calculateLocation = (courseDetail: Partial<CourseDetail>, weight: number): number => {
+  const standort = courseDetail['Standort'];
+  const locations = Array.isArray(standort)
+    ? standort.length
+    : standort
+    ? standort.split(',').length
+    : 0;
 
-  // Standort zählen
-  const locations = Array.isArray(courseDetail['Standort'])
-      ? courseDetail['Standort'].length
-      : courseDetail['Standort']
-      ? courseDetail['Standort'].split(',').length
-      : 0;
+  let score = 0;
+  if (locations >= 4) score = 3;
+  else if (locations === 3) score = 2;
+  else if (locations >= 1) score = 1;
 
-  if (locations >= 4) {
-      scoreLocation = 3;
-  } else if (locations === 3) {
-      scoreLocation = 2;
-  } else if (locations >= 1) {
-      scoreLocation = 1;
-  }
-
-  return Math.round((scoreLocation / 3) * weight);
+  return Math.round((score / 3) * weight);
 };
