@@ -23,8 +23,76 @@ const providers = [
   }
 ];
 
+// ─────────────────────────────────────────────
+// Logging Hilfsfunktionen
+// ─────────────────────────────────────────────
+
+// Startet einen neuen Scrape-Run und gibt die ID zurück
+async function startScrapeRun(): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('scrape_runs')
+    .insert({ scraper_type: 'puppeteer', status: 'running' })
+    .select('id')
+    .single();
+
+  if (error) {
+    console.error('Fehler beim Starten des Scrape-Runs:', error.message);
+    return null;
+  }
+
+  console.log(`Scrape-Run gestartet mit ID: ${data.id}`);
+  return data.id;
+}
+
+// Beendet einen Scrape-Run mit Status "success" oder "error"
+async function finishScrapeRun(runId: string, status: 'success' | 'error'): Promise<void> {
+  const { error } = await supabase
+    .from('scrape_runs')
+    .update({ finished_at: new Date().toISOString(), status })
+    .eq('id', runId);
+
+  if (error) {
+    console.error('Fehler beim Beenden des Scrape-Runs:', error.message);
+  } else {
+    console.log(`Scrape-Run ${runId} beendet mit Status: ${status}`);
+  }
+}
+
+// Loggt einen Fehler in scrape_errors
+async function logScrapeError(
+  runId: string,
+  providerId: number,
+  errorType: string,
+  message: string
+): Promise<void> {
+  const { error } = await supabase
+    .from('scrape_errors')
+    .insert({
+      run_id: runId,
+      provider_id: providerId,
+      error_type: errorType,
+      message: message,
+    });
+
+  if (error) {
+    console.error('Fehler beim Loggen des Scrape-Fehlers:', error.message);
+  } else {
+    console.warn(`Fehler geloggt für Provider ${providerId}: ${message}`);
+  }
+}
+
+// ─────────────────────────────────────────────
+// Haupt-Scraping Funktion
+// ─────────────────────────────────────────────
 async function scrapeWebsite(): Promise<void> {
   let browser: Browser | null = null;
+
+  // Scrape-Run starten
+  const runId = await startScrapeRun();
+  if (!runId) {
+    console.error('Konnte keinen Scrape-Run starten. Abbruch.');
+    return;
+  }
 
   try {
     console.log('Starte den Scraping-Prozess...');
@@ -52,9 +120,11 @@ async function scrapeWebsite(): Promise<void> {
           if (standortText) {
             standort = standortText.replace('Kursort:', '').trim();
             console.log(`Standort gefunden: ${standort}`);
+          } else {
+            await logScrapeError(runId, provider.id, 'MISSING_FIELD', `Standort nicht gefunden auf ${entry.url}`);
           }
 
-          // 👥 Maximale Teilnehmerzahl extrahieren
+          // Maximale Teilnehmerzahl extrahieren
           const teilnehmerText = await page.$$eval('li', (elements) => {
             return elements
               .map(el => el.textContent?.trim())
@@ -66,6 +136,8 @@ async function scrapeWebsite(): Promise<void> {
             const match = teilnehmerText.match(/(\d+)\s*bis\s*max\.\s*(\d+)\s*Personen/);
             maximaleTeilnehmer = match ? parseInt(match[2], 10) : null;
             console.log(`Maximale Teilnehmerzahl gefunden: ${maximaleTeilnehmer}`);
+          } else {
+            await logScrapeError(runId, provider.id, 'MISSING_FIELD', `Teilnehmerzahl nicht gefunden auf ${entry.url}`);
           }
 
           // Preis extrahieren
@@ -80,6 +152,8 @@ async function scrapeWebsite(): Promise<void> {
             const match = preisText.match(/(\d{1,5})\s*CHF/);
             preis = match ? parseInt(match[1], 10) : null;
             console.log(`Preis gefunden: ${preis} CHF`);
+          } else {
+            await logScrapeError(runId, provider.id, 'MISSING_FIELD', `Preis nicht gefunden auf ${entry.url}`);
           }
 
           // Aktualisiere GymiProviders
@@ -90,7 +164,7 @@ async function scrapeWebsite(): Promise<void> {
             .maybeSingle();
 
           if (!existingGymiProvider) {
-            console.warn(`Kein GymiProvider gefunden für Anbieter: ${provider.name}`);
+            await logScrapeError(runId, provider.id, 'PROVIDER_NOT_FOUND', `Kein GymiProvider gefunden für: ${provider.name}`);
             continue;
           }
 
@@ -109,23 +183,26 @@ async function scrapeWebsite(): Promise<void> {
           console.log('Aktualisiere CourseDetails...');
           await supabase
             .from('CourseDetails')
-            .update({
-              Standort: standort,
-            })
+            .update({ Standort: standort })
             .eq('ID', provider.id);
           console.log('CourseDetails aktualisiert.');
 
         } catch (error: any) {
           console.error(`Fehler beim Scraping von ${entry.url}:`, error.message);
+          await logScrapeError(runId, provider.id, 'SCRAPING_ERROR', error.message);
         } finally {
           if (page) await page.close();
         }
       }
     }
 
+    // Run erfolgreich beenden
+    await finishScrapeRun(runId, 'success');
     console.log('Scraping-Prozess abgeschlossen!');
+
   } catch (error: any) {
     console.error('Allgemeiner Fehler beim Scraping:', error.message);
+    await finishScrapeRun(runId, 'error');
   } finally {
     if (browser) await browser.close();
     console.log('Browser geschlossen.');
