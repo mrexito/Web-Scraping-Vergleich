@@ -8,7 +8,7 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-const PROVIDER_ID = 2; // Learning Culture ID in GymiProviders
+const PROVIDER_ID = 4; // Learning Culture ID in GymiProviders
 const PROVIDER_NAME = 'Learning Culture';
 
 const urls = [
