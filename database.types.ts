@@ -88,6 +88,68 @@ export type Database = {
           },
         ]
       }
+      courses: {
+        Row: {
+          course_type: string | null
+          course_url: string | null
+          duration_weeks: number | null
+          end_date: string | null
+          has_digital_material: boolean | null
+          id: string
+          is_online: boolean | null
+          last_scraped_at: string | null
+          location: string | null
+          occurrence: string | null
+          price_chf: number | null
+          provider_id: number | null
+          scraped_data_raw: Json | null
+          start_date: string | null
+          title: string
+        }
+        Insert: {
+          course_type?: string | null
+          course_url?: string | null
+          duration_weeks?: number | null
+          end_date?: string | null
+          has_digital_material?: boolean | null
+          id?: string
+          is_online?: boolean | null
+          last_scraped_at?: string | null
+          location?: string | null
+          occurrence?: string | null
+          price_chf?: number | null
+          provider_id?: number | null
+          scraped_data_raw?: Json | null
+          start_date?: string | null
+          title: string
+        }
+        Update: {
+          course_type?: string | null
+          course_url?: string | null
+          duration_weeks?: number | null
+          end_date?: string | null
+          has_digital_material?: boolean | null
+          id?: string
+          is_online?: boolean | null
+          last_scraped_at?: string | null
+          location?: string | null
+          occurrence?: string | null
+          price_chf?: number | null
+          provider_id?: number | null
+          scraped_data_raw?: Json | null
+          start_date?: string | null
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "courses_provider_id_fkey"
+            columns: ["provider_id"]
+            isOneToOne: false
+            referencedRelation: "GymiProviders"
+            referencedColumns: ["ID"]
+          },
+        ]
+      }
       GymiProviders: {
         Row: {
           Aufsatzkorrektur: boolean
