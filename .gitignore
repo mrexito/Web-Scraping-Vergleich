@@ -48,3 +48,6 @@ next-env.d.ts
 
 # Vercel
 .vercel
+
+# OneNote
+*.onetoc2
