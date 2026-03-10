@@ -1,56 +1,20 @@
 import 'dotenv/config';
 import puppeteer, { Browser, Page } from 'puppeteer';
 import { createClient } from '@supabase/supabase-js';
-import { Database } from '@/database.types';
+import { startScrapeRun, finishScrapeRun, logScrapeError } from './scrapeUtils';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-const PROVIDER_ID = 4; // Learning Culture ID in GymiProviders
+const PROVIDER_ID = 4;
 const PROVIDER_NAME = 'Learning Culture';
 
 const urls = [
   { url: 'https://www.learningculture.ch/kurse/langgymi-pruefung', course_type: 'langgymi' },
   { url: 'https://www.learningculture.ch/kurse/kurzgymi-pruefung', course_type: 'kurzgymi' },
 ];
-
-// ─────────────────────────────────────────────
-// Logging Hilfsfunktionen
-// ─────────────────────────────────────────────
-
-async function startScrapeRun(): Promise<string | null> {
-  const { data, error } = await supabase
-    .from('scrape_runs')
-    .insert({ scraper_type: 'puppeteer', status: 'running' })
-    .select('id')
-    .single();
-  if (error) { console.error('Fehler beim Starten des Scrape-Runs:', error.message); return null; }
-  console.log(`Scrape-Run gestartet mit ID: ${data.id}`);
-  return data.id;
-}
-
-async function finishScrapeRun(runId: string, status: 'success' | 'error'): Promise<void> {
-  const { error } = await supabase
-    .from('scrape_runs')
-    .update({ finished_at: new Date().toISOString(), status })
-    .eq('id', runId);
-  if (error) console.error('Fehler beim Beenden des Scrape-Runs:', error.message);
-  else console.log(`Scrape-Run ${runId} beendet mit Status: ${status}`);
-}
-
-async function logScrapeError(runId: string, providerId: number, errorType: string, message: string): Promise<void> {
-  const { error } = await supabase
-    .from('scrape_errors')
-    .insert({ run_id: runId, provider_id: providerId, error_type: errorType, message });
-  if (error) console.error('Fehler beim Loggen:', error.message);
-  else console.warn(`Fehler geloggt für Provider ${providerId}: ${message}`);
-}
-
-// ─────────────────────────────────────────────
-// Kurs-Zeilen aus einer Seite/Tab extrahieren
-// ─────────────────────────────────────────────
 
 interface ScrapedCourse {
   title: string;
@@ -66,7 +30,6 @@ interface ScrapedCourse {
 async function scrapeCoursesFromPage(page: Page, pageUrl: string, courseType: string): Promise<ScrapedCourse[]> {
   const courses: ScrapedCourse[] = [];
 
-  // Alle Tab-IDs auf der Seite finden
   const tabIds = await page.$$eval('.tab-list-item a.tab-heading', (links) =>
     links.map(link => link.getAttribute('href')?.replace('#', '') || '')
   );
@@ -76,54 +39,45 @@ async function scrapeCoursesFromPage(page: Page, pageUrl: string, courseType: st
   for (const tabId of tabIds) {
     if (!tabId) continue;
 
-    // Tab anklicken um Inhalt zu laden
     try {
       await page.click(`.tab-list-item a[href="#${tabId}"]`);
-      await new Promise(resolve => setTimeout(resolve, 500)); // kurz warten
+      await new Promise(resolve => setTimeout(resolve, 500));
       console.log(`Tab "${tabId}" geöffnet`);
     } catch (e) {
       console.warn(`Konnte Tab "${tabId}" nicht anklicken`);
       continue;
     }
 
-    // Kurszeilen im aktiven Tab extrahieren
     const tabCourses = await page.$$eval(
       `[id="${tabId}"] .div-table-row`,
       (rows, args) => {
         const { pageUrl, courseType } = args;
         let lastSubcat = '';
         return rows.map(row => {
-          // Kursname (Subkategorie) - nur wenn vorhanden
           const subcatEl = row.querySelector('.course-subcat:not(.no-content) h4');
           if (subcatEl?.textContent?.trim()) {
             lastSubcat = subcatEl.textContent.trim();
           }
 
-          // Preis aus data-item-price Attribut
           const priceEl = row.querySelector('[data-item-price]');
           const price = priceEl ? parseInt(priceEl.getAttribute('data-item-price') || '0') : null;
 
-          // Standort
           const locationEl = row.querySelector('.course-location');
           const location = locationEl?.textContent?.trim() || 'Unbekannt';
 
-          // Daten
           const datesEl = row.querySelector('.course-dates');
           const datesText = datesEl?.textContent?.trim() || '';
           const dateParts = datesText.split(' - ');
 
-          // Datum von DD.MM.YYYY zu YYYY-MM-DD konvertieren
           const parseDate = (d: string) => {
             const parts = d.trim().split('.');
             if (parts.length === 3) return `${parts[2]}-${parts[1]}-${parts[0]}`;
             return null;
           };
 
-          // Uhrzeit/Wochentag
           const occurrenceEl = row.querySelector('.course-occurrence');
           const occurrence = occurrenceEl?.textContent?.trim() || '';
 
-          // data-item-name für vollständigen Kurstitel
           const infoEl = row.querySelector('[data-item-name]');
           const itemName = infoEl?.getAttribute('data-item-name') || lastSubcat;
 
@@ -137,7 +91,7 @@ async function scrapeCoursesFromPage(page: Page, pageUrl: string, courseType: st
             course_type: courseType,
             course_url: pageUrl,
           };
-        }).filter(c => c.title && c.occurrence); // leere Zeilen rausfiltern
+        }).filter(c => c.title && c.occurrence);
       },
       { pageUrl, courseType }
     );
@@ -149,10 +103,6 @@ async function scrapeCoursesFromPage(page: Page, pageUrl: string, courseType: st
   return courses;
 }
 
-// ─────────────────────────────────────────────
-// Hauptfunktion
-// ─────────────────────────────────────────────
-
 async function scrapeLearningCulture(): Promise<void> {
   let browser: Browser | null = null;
 
@@ -160,10 +110,9 @@ async function scrapeLearningCulture(): Promise<void> {
   if (!runId) { console.error('Konnte keinen Scrape-Run starten. Abbruch.'); return; }
 
   try {
-    console.log('Starte Learning Culture Scraper...');
+    console.log('Starte ' + PROVIDER_NAME + ' Scraper...');
     browser = await puppeteer.launch({ headless: true });
 
-    // Alte Kurse für diesen Anbieter löschen (damit keine Duplikate entstehen)
     await supabase.from('courses').delete().eq('provider_id', PROVIDER_ID);
     console.log('Alte Kurse gelöscht.');
 
@@ -182,7 +131,6 @@ async function scrapeLearningCulture(): Promise<void> {
           continue;
         }
 
-        // Kurse in Supabase speichern
         const coursesToInsert = courses.map(c => ({
           provider_id: PROVIDER_ID,
           title: c.title,
@@ -213,7 +161,7 @@ async function scrapeLearningCulture(): Promise<void> {
     }
 
     await finishScrapeRun(runId, 'success');
-    console.log('\nLearning Culture Scraping abgeschlossen!');
+    console.log('\n' + PROVIDER_NAME + ' Scraping abgeschlossen!');
 
   } catch (error: any) {
     console.error('Allgemeiner Fehler:', error.message);

@@ -2,6 +2,7 @@ import 'dotenv/config';
 import puppeteer, { Browser, Page } from 'puppeteer';
 import { createClient } from '@supabase/supabase-js';
 import { Database } from '@/database.types';
+import { startScrapeRun, finishScrapeRun, logScrapeError } from './scrapeUtils';
 
 type ScrapedDataGymiProviders = Database['public']['Tables']['GymiProviders']['Insert'];
 type ScrapedDataCourseDetails = Database['public']['Tables']['CourseDetails']['Insert'];
@@ -11,7 +12,6 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-// Anbieter-URLs
 const providers = [
   {
     id: 1,
@@ -23,71 +23,9 @@ const providers = [
   }
 ];
 
-// ─────────────────────────────────────────────
-// Logging Hilfsfunktionen
-// ─────────────────────────────────────────────
-
-// Startet einen neuen Scrape-Run und gibt die ID zurück
-async function startScrapeRun(): Promise<string | null> {
-  const { data, error } = await supabase
-    .from('scrape_runs')
-    .insert({ scraper_type: 'puppeteer', status: 'running' })
-    .select('id')
-    .single();
-
-  if (error) {
-    console.error('Fehler beim Starten des Scrape-Runs:', error.message);
-    return null;
-  }
-
-  console.log(`Scrape-Run gestartet mit ID: ${data.id}`);
-  return data.id;
-}
-
-// Beendet einen Scrape-Run mit Status "success" oder "error"
-async function finishScrapeRun(runId: string, status: 'success' | 'error'): Promise<void> {
-  const { error } = await supabase
-    .from('scrape_runs')
-    .update({ finished_at: new Date().toISOString(), status })
-    .eq('id', runId);
-
-  if (error) {
-    console.error('Fehler beim Beenden des Scrape-Runs:', error.message);
-  } else {
-    console.log(`Scrape-Run ${runId} beendet mit Status: ${status}`);
-  }
-}
-
-// Loggt einen Fehler in scrape_errors
-async function logScrapeError(
-  runId: string,
-  providerId: number,
-  errorType: string,
-  message: string
-): Promise<void> {
-  const { error } = await supabase
-    .from('scrape_errors')
-    .insert({
-      run_id: runId,
-      provider_id: providerId,
-      error_type: errorType,
-      message: message,
-    });
-
-  if (error) {
-    console.error('Fehler beim Loggen des Scrape-Fehlers:', error.message);
-  } else {
-    console.warn(`Fehler geloggt für Provider ${providerId}: ${message}`);
-  }
-}
-
-// ─────────────────────────────────────────────
-// Haupt-Scraping Funktion
-// ─────────────────────────────────────────────
 async function scrapeWebsite(): Promise<void> {
   let browser: Browser | null = null;
 
-  // Scrape-Run starten
   const runId = await startScrapeRun();
   if (!runId) {
     console.error('Konnte keinen Scrape-Run starten. Abbruch.');
@@ -109,7 +47,6 @@ async function scrapeWebsite(): Promise<void> {
           page = await browser.newPage();
           await page.goto(entry.url, { waitUntil: 'networkidle2', timeout: 60000 });
 
-          // Standort extrahieren
           const standortText = await page.$$eval('li', (elements) => {
             return elements
               .map(el => el.textContent?.trim())
@@ -124,7 +61,6 @@ async function scrapeWebsite(): Promise<void> {
             await logScrapeError(runId, provider.id, 'MISSING_FIELD', `Standort nicht gefunden auf ${entry.url}`);
           }
 
-          // Maximale Teilnehmerzahl extrahieren
           const teilnehmerText = await page.$$eval('li', (elements) => {
             return elements
               .map(el => el.textContent?.trim())
@@ -140,7 +76,6 @@ async function scrapeWebsite(): Promise<void> {
             await logScrapeError(runId, provider.id, 'MISSING_FIELD', `Teilnehmerzahl nicht gefunden auf ${entry.url}`);
           }
 
-          // Preis extrahieren
           const preisText = await page.$$eval('li', (elements) => {
             return elements
               .map(el => el.textContent?.trim())
@@ -156,7 +91,6 @@ async function scrapeWebsite(): Promise<void> {
             await logScrapeError(runId, provider.id, 'MISSING_FIELD', `Preis nicht gefunden auf ${entry.url}`);
           }
 
-          // Aktualisiere GymiProviders
           const { data: existingGymiProvider } = await supabase
             .from('GymiProviders')
             .select('*')
@@ -168,7 +102,6 @@ async function scrapeWebsite(): Promise<void> {
             continue;
           }
 
-          console.log('Aktualisiere GymiProviders...');
           await supabase
             .from('GymiProviders')
             .update({
@@ -179,8 +112,6 @@ async function scrapeWebsite(): Promise<void> {
             .eq('ID', provider.id);
           console.log(`Preis für ${entry.type}-Kurs aktualisiert.`);
 
-          // Aktualisiere CourseDetails
-          console.log('Aktualisiere CourseDetails...');
           await supabase
             .from('CourseDetails')
             .update({ Standort: standort })
@@ -196,7 +127,6 @@ async function scrapeWebsite(): Promise<void> {
       }
     }
 
-    // Run erfolgreich beenden
     await finishScrapeRun(runId, 'success');
     console.log('Scraping-Prozess abgeschlossen!');
 
@@ -209,7 +139,6 @@ async function scrapeWebsite(): Promise<void> {
   }
 }
 
-// Starte den Scraping-Prozess
 scrapeWebsite().catch((error) =>
   console.error('Fehler beim Starten von scrapeWebsite:', error.message)
 );

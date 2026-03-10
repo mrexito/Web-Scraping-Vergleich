@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import puppeteer, { Browser, Page } from 'puppeteer';
 import { createClient } from '@supabase/supabase-js';
+import { startScrapeRun, finishScrapeRun, logScrapeError } from './scrapeUtils';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -13,52 +14,12 @@ const URLS = [
   { url: 'https://www.logos-lehrerteam.ch/kurse-gymivorbereitung-zap-kosten', course_type: 'kurzgymi' },
 ];
 
-// ─────────────────────────────────────────────
-// Logging Hilfsfunktionen
-// ─────────────────────────────────────────────
-
-async function startScrapeRun(): Promise<string | null> {
-  const { data, error } = await supabase
-    .from('scrape_runs')
-    .insert({ scraper_type: 'puppeteer', status: 'running' })
-    .select('id')
-    .single();
-  if (error) { console.error('Fehler beim Starten:', error.message); return null; }
-  console.log(`Scrape-Run gestartet mit ID: ${data.id}`);
-  return data.id;
-}
-
-async function finishScrapeRun(runId: string, status: 'success' | 'error'): Promise<void> {
-  const { error } = await supabase
-    .from('scrape_runs')
-    .update({ finished_at: new Date().toISOString(), status })
-    .eq('id', runId);
-  if (error) console.error('Fehler beim Beenden:', error.message);
-  else console.log(`Scrape-Run ${runId} beendet mit Status: ${status}`);
-}
-
-async function logScrapeError(runId: string, providerId: number, errorType: string, message: string): Promise<void> {
-  const { error } = await supabase
-    .from('scrape_errors')
-    .insert({ run_id: runId, provider_id: providerId, error_type: errorType, message });
-  if (error) console.error('Fehler beim Loggen:', error.message);
-  else console.warn(`Fehler geloggt: ${message}`);
-}
-
-// ─────────────────────────────────────────────
-// Kurse aus Seite extrahieren
-// ─────────────────────────────────────────────
-
 async function scrapeCoursesFromPage(page: Page, courseType: string) {
   const courses = await page.evaluate((courseType) => {
-    // Preisbeispiele aus Fliesstext extrahieren
-    const allText = document.querySelector('.sqs-html-content')?.innerHTML || '';
-
-    // Preise mit Regex aus dem HTML extrahieren
     const priceMatches = [
-      { title: 'Gesamtkurs Frühbucher (Anfang März)', price: 2950, discount: '19%' },
-      { title: 'Gesamtkurs (Buchung Mitte Mai)', price: 3110, discount: '15%' },
-      { title: 'Gesamtkurs (Buchung Ende Juli)', price: 3290, discount: '10%' },
+      { title: 'Gesamtkurs Frühbucher (Anfang März)', price: 2950 },
+      { title: 'Gesamtkurs (Buchung Mitte Mai)', price: 3110 },
+      { title: 'Gesamtkurs (Buchung Ende Juli)', price: 3290 },
     ];
 
     return priceMatches.map(entry => ({
@@ -74,10 +35,6 @@ async function scrapeCoursesFromPage(page: Page, courseType: string) {
   return courses;
 }
 
-// ─────────────────────────────────────────────
-// Hauptfunktion
-// ─────────────────────────────────────────────
-
 async function scrapeLogosLehrerteam(): Promise<void> {
   let browser: Browser | null = null;
 
@@ -91,7 +48,6 @@ async function scrapeLogosLehrerteam(): Promise<void> {
     await supabase.from('courses').delete().eq('provider_id', PROVIDER_ID);
     console.log('Alte Kurse gelöscht.');
 
-    // Nur einmal laden, dann für beide Kurstypen verwenden
     const page = await browser.newPage();
     await page.goto(URLS[0].url, { waitUntil: 'networkidle2', timeout: 60000 });
 
