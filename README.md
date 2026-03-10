@@ -1,8 +1,9 @@
-# Bachelor Thesis – Comparison Portal for Crowdfunding Platforms
+# Bachelor Thesis – Comparison portal for providers of grammar school preparation courses
 
 ## Thema der Arbeit
-This project was developed as part of a Bachelor's Thesis.
-The objective is to design and implement a web-based comparison portal that supports users in identifying the most suitable crowdfunding provider based on individually defined criteria.
+This project was developed as part of my Bachelor Thesis.
+The objective was to design and implement a web-based comparison portal that supports users in identifying the most suitable grammer school preparation course provider based on individually defined criteria.
+
 
 The system applies a weighted utility analysis model to evaluate and rank providers.
 
