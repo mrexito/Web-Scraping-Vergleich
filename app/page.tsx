@@ -2,6 +2,7 @@ import UtilityAnalysisInteraction from '../components/UtilityAnalysisInteraction
 import { createServerSupabaseClient } from '@/utils/supabase/server';
 import { parseGymiProviders } from '@/schemas/gymiProviderSchema';
 import { parseCourseDetails } from '@/schemas/courseDetailSchema';
+import { transformProviders } from '@/utils/transformProviders';
 
 const UtilityAnalysis = async () => {
   const supabase = await createServerSupabaseClient();
@@ -36,28 +37,9 @@ const UtilityAnalysis = async () => {
     console.error('Fehler beim Laden der CourseDetails:', errorCourseDetails);
   }
 
-  // ✅ Zod-Validierung
   const validProviders = parseGymiProviders(rawProviders ?? []);
   const validCourseDetails = parseCourseDetails(rawCourseDetails ?? []);
-
-  // Alle Felder mitgeben die calculation.tsx braucht
-  const transformedProviders = validProviders.map((provider) => ({
-    id: provider.ID,
-    name: provider.Name,
-    pricePerformance: provider['Preis Langzeit Kurs'] ?? provider['Preis Intensiver Kurs'] ?? 'Nicht verfügbar',
-    additionalServices:
-      provider['E-Learning'] || provider.Aufsatzkorrektur || provider.Einzelkurse ? 'Ja' : 'Nein',
-    URL: provider.URL ?? [],
-    // Felder für calculation.tsx
-    'Preis-Kategorie': provider['Preis-Kategorie'],
-    'Maximale Anzahl der Teilnehmer': provider['Maximale Anzahl der Teilnehmer'],
-    'E-Learning': provider['E-Learning'],
-    Aufsatzkorrektur: provider.Aufsatzkorrektur,
-    Einzelkurse: provider.Einzelkurse,
-    'Intensiver Kurs': provider['Intensiver Kurs'],
-    Einstufungstest: provider.Einstufungstest,
-    Onlinepruefung: provider.Onlinepruefung,
-  }));
+  const transformedProviders = transformProviders(validProviders);
 
   return (
     <div className="container mx-auto px-4 sm:px-8">
