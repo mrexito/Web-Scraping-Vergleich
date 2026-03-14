@@ -39,6 +39,10 @@ export default function UtilityAnalysisInteraction({ GymiProviders, CourseDetail
   useEffect(() => {
     setProviders(GymiProviders);
     setCourseDetails(CourseDetails);
+    // Kriterien fix setzen beim ersten Laden
+    CRITERIA_OPTIONS.forEach((opt, index) => {
+      updateParam(index, 'criteria', opt.value);
+    });
   }, []);
 
   const handleCalculate = () => {
@@ -62,9 +66,7 @@ export default function UtilityAnalysisInteraction({ GymiProviders, CourseDetail
       <div className="mb-5">
         <h2 className="text-2xl font-semibold leading-tight mb-2">Nutzwertanalyse</h2>
       </div>
-      <p>
-        Bitte wählen Sie Kriterien aus. Die Endsumme muss 100% ergeben.
-      </p>
+      <p>Bitte geben Sie die Gewichtung für jedes Kriterium ein. Die Endsumme muss 100% ergeben.</p>
       <div className="-mx-4 sm:-mx-8 px-4 sm:px-8 py-4 overflow-x-auto">
         <div className="inline-block min-w-full shadow rounded-lg overflow-hidden">
           <table className="min-w-full leading-normal border-collapse border border-gray-200">
@@ -79,25 +81,16 @@ export default function UtilityAnalysisInteraction({ GymiProviders, CourseDetail
               </tr>
             </thead>
             <tbody>
-              {params.map((param, index) => (
-                <tr key={param.id} className="hover:bg-gray-50">
-                  <td className="px-5 py-5 border-b border-gray-200 text-sm">
-                    <select
-                      className="h-full rounded border-gray-300 py-2 px-4 block w-full"
-                      value={param.criteria}
-                      onChange={(e) => updateParam(index, 'criteria', e.target.value)}
-                    >
-                      <option value="" disabled hidden>Kriterium auswählen</option>
-                      {CRITERIA_OPTIONS.map((opt) => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                      ))}
-                    </select>
+              {CRITERIA_OPTIONS.map((opt, index) => (
+                <tr key={opt.value} className="hover:bg-gray-50">
+                  <td className="px-5 py-5 border-b border-gray-200 text-sm font-medium">
+                    {opt.label}
                   </td>
                   <td className="px-5 py-5 border-b border-gray-200 text-sm">
                     <input
                       type="number"
                       placeholder="Gewichtung"
-                      value={param.weight}
+                      value={params[index]?.weight ?? ''}
                       onChange={(e) => updateParam(index, 'weight', e.target.value)}
                       className="w-full rounded border-gray-300 py-2 px-4"
                     />

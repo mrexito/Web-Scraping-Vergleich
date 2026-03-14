@@ -82,6 +82,12 @@ export const useScoringStore = create<ScoringStore>((set, get) => ({
           location: l,
           totalScore: Math.round(pp + q + f + as + l),
           URL: provider.URL?.length ? provider.URL : [],
+          'Preis-Kategorie': provider['Preis-Kategorie'],
+          'E-Learning': provider['E-Learning'],
+          Aufsatzkorrektur: provider.Aufsatzkorrektur,
+          Einstufungstest: provider.Einstufungstest,
+          'Maximale Anzahl der Teilnehmer': provider['Maximale Anzahl der Teilnehmer'],
+          rawPrice: provider.pricePerformance,
         };
       })
       .sort((a, b) => b.totalScore - a.totalScore);
