@@ -4,7 +4,8 @@ import {
   calculateFlexibility,
   calculateLocation,
   calculatePricePerformance,
-  calculateQuality
+  calculateQuality,
+  type Kurstyp,
 } from '@/utils/utilityAnalysis/calculation';
 import { checkForm } from '@/utils/utilityAnalysis/checkForm';
 import type { GymiProvider } from '@/schemas/gymiProviderSchema';
@@ -20,12 +21,14 @@ export interface ScoringParam {
 
 interface ScoringStore {
   params: ScoringParam[];
+  kurstyp: Kurstyp;
   ratedProviders: RatedGymiProviders[];
   providers: TransformedGymiProviders[];
   courseDetails: CourseDetail[];
 
   setProviders: (p: TransformedGymiProviders[]) => void;
   setCourseDetails: (d: CourseDetail[]) => void;
+  setKurstyp: (k: Kurstyp) => void;
   updateParam: (index: number, field: 'weight' | 'criteria', value: string) => void;
   calculate: () => string | true;
   reset: () => void;
@@ -41,12 +44,14 @@ const initialParams: ScoringParam[] = [
 
 export const useScoringStore = create<ScoringStore>((set, get) => ({
   params: initialParams,
+  kurstyp: 'langgymi',
   ratedProviders: [],
   providers: [],
   courseDetails: [],
 
   setProviders: (p) => set({ providers: p }),
   setCourseDetails: (d) => set({ courseDetails: d }),
+  setKurstyp: (k) => set({ kurstyp: k, ratedProviders: [] }),
 
   updateParam: (index, field, value) => {
     const updated = [...get().params];
@@ -55,7 +60,7 @@ export const useScoringStore = create<ScoringStore>((set, get) => ({
   },
 
   calculate: () => {
-    const { params, providers, courseDetails } = get();
+    const { params, providers, courseDetails, kurstyp } = get();
     const valid = checkForm(params);
     if (valid !== true) return valid;
     if (!providers.length) return 'Keine Anbieterdaten verfügbar.';
@@ -64,13 +69,36 @@ export const useScoringStore = create<ScoringStore>((set, get) => ({
       Number(params.find((p) => p.criteria === criteria)?.weight) || 0;
 
     const rated: RatedGymiProviders[] = providers
+      // Anbieter filtern die den gewählten Kurstyp nicht anbieten
+      .filter((provider) => {
+        const detail = courseDetails.find((d) => d.ID === provider.id);
+        const kursart = detail?.['Kursart (Intensiv- oder Langzeitkurs)'];
+        if (!kursart || kursart === 'Beides') return true;
+        if (kurstyp === 'langgymi') return kursart === 'Lang';
+        if (kurstyp === 'kurzgymi') return kursart === 'Intensiv';
+        return true;
+    })
+
       .map((provider) => {
         const detail = courseDetails.find((d) => d.ID === provider.id) ?? {};
-        const pp = calculatePricePerformance(provider as unknown as GymiProvider, getWeight('price-performance'));
+        const pp = calculatePricePerformance(
+          provider as unknown as GymiProvider,
+          getWeight('price-performance'),
+          kurstyp
+        );
         const q = calculateQuality(detail, getWeight('quality'));
-        const f = calculateFlexibility(detail, getWeight('flexibility'));
-        const as = calculateAdditionalServices(provider as unknown as GymiProvider, detail, getWeight('additional-services'));
+        const f = calculateFlexibility(detail, getWeight('flexibility'), kurstyp);
+        const as = calculateAdditionalServices(
+          provider as unknown as GymiProvider,
+          detail,
+          getWeight('additional-services')
+        );
         const l = calculateLocation(detail, getWeight('location'));
+
+        const preis =
+          kurstyp === 'langgymi'
+            ? provider.pricePerformance
+            : provider.priceIntensiv;
 
         return {
           id: provider.id,
@@ -82,12 +110,12 @@ export const useScoringStore = create<ScoringStore>((set, get) => ({
           location: l,
           totalScore: Math.round(pp + q + f + as + l),
           URL: provider.URL?.length ? provider.URL : [],
-          'Preis-Kategorie': provider['Preis-Kategorie'],
           'E-Learning': provider['E-Learning'],
           Aufsatzkorrektur: provider.Aufsatzkorrektur,
           Einstufungstest: provider.Einstufungstest,
           'Maximale Anzahl der Teilnehmer': provider['Maximale Anzahl der Teilnehmer'],
-          rawPrice: provider.pricePerformance,
+          rawPrice: preis,
+          kurstyp,
         };
       })
       .sort((a, b) => b.totalScore - a.totalScore);

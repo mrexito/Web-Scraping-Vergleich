@@ -3,31 +3,33 @@ import { z } from 'zod';
 export const CourseDetailSchema = z.object({
   ID: z.number().int().positive(),
 
+  // Kursstruktur
   'Kursart (Intensiv- oder Langzeitkurs)': z
     .enum(['Intensiv', 'Lang', 'Beides'])
     .nullable()
     .optional(),
   Unterrichttag: z.string().nullable().optional(),
+
+  // Kursdauer (Preise pro Woche/Std. entfernt — ableitbar aus Fixpreis ÷ Dauer)
   'Dauer der Kurse in Std. Kurzzeitkurs': z.number().nonnegative().nullable().optional(),
   'Dauer der Kurse in Wochen Langzeitkurs': z.number().positive().nullable().optional(),
 
-  'Preis pro Std. Intensiverkurs': z.number().nonnegative().nullable().optional(),
-  'Preis pro Woche Langzeitkurs': z.number().positive().nullable().optional(),
-
+  // Standort
   Standort: z.string().nullable().optional(),
 
+  // Qualität
   Qualitaetsbewertung: z.union([z.literal(1), z.literal(2), z.literal(3)]).nullable().optional(),
 
+  // Zusatzleistungen (Booleans)
   Beratungsgespraech: z.boolean(),
   'Eigene Lernunterlagen': z.boolean(),
-  Experten: z.boolean(),
-  FAQ: z.boolean(),
   'info freien Plaetze?': z.boolean(),
   'Info zur Erfolgsquote': z.boolean(),
   Nachholmoeglichkeiten: z.boolean(),
   Pruefungsarchiv: z.boolean(),
   'Unterstuezung ausserhalb Unterrichtszeit': z.boolean(),
 
+  // Freitext (nur Anzeige, kein Scoring)
   Spezielles: z.string().nullable().optional(),
 });
 

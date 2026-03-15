@@ -3,21 +3,22 @@ import { useEffect } from 'react';
 import { useScoringStore } from '@/store/scoringStore';
 import GymiProviderOverview from './GymiProviderOverview';
 import type { CourseDetail } from '@/schemas/courseDetailSchema';
+import type { Kurstyp } from '@/utils/utilityAnalysis/calculation';
 
 export interface TransformedGymiProviders {
   id: number;
   name: string;
   pricePerformance: string | number;
+  priceIntensiv: string | number;
   additionalServices: string;
   URL?: string[] | null;
-  'Preis-Kategorie': 'A' | 'B' | 'C';
   'Maximale Anzahl der Teilnehmer'?: string | null;
   'E-Learning': boolean;
   Aufsatzkorrektur: boolean;
   Einzelkurse: boolean;
-  'Intensiver Kurs': boolean;
   Einstufungstest: boolean;
   Onlinepruefung: boolean;
+  Pruefungssimultaion: boolean;
 }
 
 interface Props {
@@ -33,13 +34,27 @@ const CRITERIA_OPTIONS = [
   { value: 'location', label: 'Standort' },
 ];
 
+const KURSTYP_OPTIONS: { value: Kurstyp; label: string }[] = [
+  { value: 'langgymi', label: 'Langzeitgymnasium' },
+  { value: 'kurzgymi', label: 'Kurzzeitgymnasium' },
+];
+
 export default function UtilityAnalysisInteraction({ GymiProviders, CourseDetails }: Props) {
-  const { params, ratedProviders, setProviders, setCourseDetails, updateParam, calculate, reset } = useScoringStore();
+  const {
+    params,
+    kurstyp,
+    ratedProviders,
+    setProviders,
+    setCourseDetails,
+    setKurstyp,
+    updateParam,
+    calculate,
+    reset,
+  } = useScoringStore();
 
   useEffect(() => {
     setProviders(GymiProviders);
     setCourseDetails(CourseDetails);
-    // Kriterien fix setzen beim ersten Laden
     CRITERIA_OPTIONS.forEach((opt, index) => {
       updateParam(index, 'criteria', opt.value);
     });
@@ -50,10 +65,21 @@ export default function UtilityAnalysisInteraction({ GymiProviders, CourseDetail
     if (result !== true) alert(result);
   };
 
+  const handleReset = () => {
+    reset();
+    // Kriterien nach Reset neu setzen, da reset() den Store leert
+    CRITERIA_OPTIONS.forEach((opt, index) => {
+      updateParam(index, 'criteria', opt.value);
+    });
+  };
+
   if (ratedProviders.length > 0) {
     return (
       <>
-        <button onClick={reset} className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mt-4">
+        <button
+          onClick={handleReset}
+          className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mt-4"
+        >
           Neu ausrechnen
         </button>
         <GymiProviderOverview gymiProviders={ratedProviders} courseDetails={CourseDetails} />
@@ -66,7 +92,33 @@ export default function UtilityAnalysisInteraction({ GymiProviders, CourseDetail
       <div className="mb-5">
         <h2 className="text-2xl font-semibold leading-tight mb-2">Nutzwertanalyse</h2>
       </div>
-      <p>Bitte geben Sie die Gewichtung für jedes Kriterium ein. Die Endsumme muss 100% ergeben.</p>
+
+      {/* Kurstyp-Auswahl */}
+      <div className="mb-6">
+        <p className="text-sm font-medium text-gray-700 mb-2">
+          Für welchen Gymnasiumstyp suchen Sie einen Kurs?
+        </p>
+        <div className="flex gap-3">
+          {KURSTYP_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => setKurstyp(opt.value)}
+              className={`px-5 py-2 rounded border font-medium text-sm transition-colors ${
+                kurstyp === opt.value
+                  ? 'bg-gray-700 text-white border-gray-700'
+                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Gewichtungstabelle */}
+      <p className="mb-3 text-sm text-gray-600">
+        Bitte geben Sie die Gewichtung für jedes Kriterium ein. Die Endsumme muss 100% ergeben.
+      </p>
       <div className="-mx-4 sm:-mx-8 px-4 sm:px-8 py-4 overflow-x-auto">
         <div className="inline-block min-w-full shadow rounded-lg overflow-hidden">
           <table className="min-w-full leading-normal border-collapse border border-gray-200">
@@ -101,7 +153,10 @@ export default function UtilityAnalysisInteraction({ GymiProviders, CourseDetail
           </table>
         </div>
       </div>
-      <button onClick={handleCalculate} className="bg-gray-700 text-white font-bold py-2 px-4 rounded mt-4 hover:bg-gray-800">
+      <button
+        onClick={handleCalculate}
+        className="bg-gray-700 text-white font-bold py-2 px-4 rounded mt-4 hover:bg-gray-800"
+      >
         Ausrechnen
       </button>
     </div>

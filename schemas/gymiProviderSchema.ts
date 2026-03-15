@@ -5,28 +5,37 @@ export const GymiProviderSchema = z.object({
   Name: z.string().min(1, 'Name darf nicht leer sein'),
   URL: z.array(z.string().url()).nullable().optional(),
 
-  'Intensiver Kurs': z.boolean(),
+  // Preise (Fixpreise je Kurstyp)
+  'Preis Intensiver Kurs': z.number().positive().nullable().optional(),
+  'Preis Langzeit Kurs': z.number().positive().nullable().optional(),
+
+  // Kursangebot
   Einzelkurse: z.boolean(),
   'E-Learning': z.boolean(),
 
-  Mathematik: z.boolean().nullable().optional(),
-  Deutsch: z.boolean().nullable().optional(),
-  Franzoesisch: z.boolean().nullable().optional(),
-
-  'Preis Intensiver Kurs': z.number().positive().nullable().optional(),
-  'Preis Langzeit Kurs': z.number().positive().nullable().optional(),
-  'Preis-Kategorie': z.enum(['A', 'B', 'C']),
-
+  // Zusatzleistungen
   Aufsatzkorrektur: z.boolean(),
   Einstufungstest: z.boolean(),
   Onlinepruefung: z.boolean(),
   Pruefungssimultaion: z.boolean().nullable().optional(),
 
+  // Kapazität
   'Maximale Anzahl der Teilnehmer': z.string().nullable().optional(),
-  Mitarbeiter: z.number().int().positive().nullable().optional(),
 });
 
 export type GymiProvider = z.infer<typeof GymiProviderSchema>;
+
+// Preis-Kategorie wird dynamisch berechnet (ersetzt manuell gepflegtes DB-Feld)
+export type PreisKategorie = 'A' | 'B' | 'C';
+
+export const getPreisKategorie = (
+  preis: number | null | undefined
+): PreisKategorie => {
+  if (!preis) return 'C';
+  if (preis < 2500) return 'A';
+  if (preis < 3200) return 'B';
+  return 'C';
+};
 
 export const parseGymiProvider = (raw: unknown): GymiProvider => {
   const result = GymiProviderSchema.safeParse(raw);

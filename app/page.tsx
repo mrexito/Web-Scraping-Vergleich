@@ -7,31 +7,37 @@ import { transformProviders } from '@/utils/transformProviders';
 const UtilityAnalysis = async () => {
   const supabase = await createServerSupabaseClient();
 
-  const { data: rawProviders, error: errorProviders } = await supabase
-    .from('GymiProviders')
-    .select(
-      `ID, Name, "Preis Langzeit Kurs", "Preis Intensiver Kurs", "Preis-Kategorie",
-       "E-Learning", Aufsatzkorrektur, Einzelkurse, URL,
-       "Maximale Anzahl der Teilnehmer", "Intensiver Kurs",
-       Mathematik, Deutsch, Franzoesisch, Einstufungstest,
-       Onlinepruefung, Mitarbeiter, Pruefungssimultaion`
-    );
+  const [
+    { data: rawProviders, error: errorProviders },
+    { data: rawCourseDetails, error: errorCourseDetails },
+  ] = await Promise.all([
+    supabase
+      .from('GymiProviders')
+      .select(
+        `ID, Name,
+         "Preis Langzeit Kurs", "Preis Intensiver Kurs",
+         "E-Learning", Aufsatzkorrektur, Einzelkurse, URL,
+         "Maximale Anzahl der Teilnehmer",
+         Einstufungstest, Onlinepruefung, Pruefungssimultaion`
+      ),
+    supabase
+      .from('CourseDetails')
+      .select(
+        `ID,
+         "Kursart (Intensiv- oder Langzeitkurs)",
+         "Dauer der Kurse in Wochen Langzeitkurs",
+         "Dauer der Kurse in Std. Kurzzeitkurs",
+         "Eigene Lernunterlagen",
+         Unterrichttag, Standort, Pruefungsarchiv, Beratungsgespraech,
+         Qualitaetsbewertung, Nachholmoeglichkeiten,
+         "info freien Plaetze?", "Info zur Erfolgsquote",
+         "Unterstuezung ausserhalb Unterrichtszeit", Spezielles`
+      ),
+  ]);
 
   if (errorProviders) {
     console.error('Fehler beim Laden der GymiProviders:', errorProviders);
   }
-
-  const { data: rawCourseDetails, error: errorCourseDetails } = await supabase
-    .from('CourseDetails')
-    .select(
-      `ID, "Preis pro Woche Langzeitkurs", "Dauer der Kurse in Wochen Langzeitkurs",
-       "Eigene Lernunterlagen", "Kursart (Intensiv- oder Langzeitkurs)",
-       Unterrichttag, Standort, Pruefungsarchiv, Beratungsgespraech,
-       Qualitaetsbewertung, Nachholmoeglichkeiten, Experten, FAQ,
-       "info freien Plaetze?", "Info zur Erfolgsquote",
-       "Unterstuezung ausserhalb Unterrichtszeit", Spezielles,
-       "Dauer der Kurse in Std. Kurzzeitkurs", "Preis pro Std. Intensiverkurs"`
-    );
 
   if (errorCourseDetails) {
     console.error('Fehler beim Laden der CourseDetails:', errorCourseDetails);

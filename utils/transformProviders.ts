@@ -5,17 +5,20 @@ export function transformProviders(providers: GymiProvider[]): TransformedGymiPr
   return providers.map((provider) => ({
     id: provider.ID,
     name: provider.Name,
-    pricePerformance: provider['Preis Langzeit Kurs'] ?? provider['Preis Intensiver Kurs'] ?? 'Nicht verfügbar',
+    // Beide Preise weitergeben — Store wählt je nach Kurstyp den richtigen
+    pricePerformance: provider['Preis Langzeit Kurs'] ?? 'Nicht verfügbar',
+    priceIntensiv: provider['Preis Intensiver Kurs'] ?? 'Nicht verfügbar',
     additionalServices:
-      provider['E-Learning'] || provider.Aufsatzkorrektur || provider.Einzelkurse ? 'Ja' : 'Nein',
+      provider['E-Learning'] || provider.Aufsatzkorrektur || provider.Einzelkurse
+        ? 'Ja'
+        : 'Nein',
     URL: provider.URL ?? [],
-    'Preis-Kategorie': provider['Preis-Kategorie'],
     'Maximale Anzahl der Teilnehmer': provider['Maximale Anzahl der Teilnehmer'],
     'E-Learning': provider['E-Learning'],
     Aufsatzkorrektur: provider.Aufsatzkorrektur,
     Einzelkurse: provider.Einzelkurse,
-    'Intensiver Kurs': provider['Intensiver Kurs'],
     Einstufungstest: provider.Einstufungstest,
     Onlinepruefung: provider.Onlinepruefung,
+    Pruefungssimultaion: provider.Pruefungssimultaion ?? false,
   }));
 }

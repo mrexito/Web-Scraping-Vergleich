@@ -20,15 +20,11 @@ export type Database = {
           "Dauer der Kurse in Std. Kurzzeitkurs": number | null
           "Dauer der Kurse in Wochen Langzeitkurs": number | null
           "Eigene Lernunterlagen": boolean
-          Experten: boolean
-          FAQ: boolean
           ID: number
           "info freien Plaetze?": boolean
           "Info zur Erfolgsquote": boolean
           "Kursart (Intensiv- oder Langzeitkurs)": string | null
           Nachholmoeglichkeiten: boolean
-          "Preis pro Std. Intensiverkurs": number | null
-          "Preis pro Woche Langzeitkurs": number | null
           Pruefungsarchiv: boolean
           Qualitaetsbewertung: number | null
           Spezielles: string | null
@@ -41,15 +37,11 @@ export type Database = {
           "Dauer der Kurse in Std. Kurzzeitkurs"?: number | null
           "Dauer der Kurse in Wochen Langzeitkurs"?: number | null
           "Eigene Lernunterlagen": boolean
-          Experten: boolean
-          FAQ: boolean
           ID?: number
           "info freien Plaetze?": boolean
           "Info zur Erfolgsquote": boolean
           "Kursart (Intensiv- oder Langzeitkurs)"?: string | null
           Nachholmoeglichkeiten: boolean
-          "Preis pro Std. Intensiverkurs"?: number | null
-          "Preis pro Woche Langzeitkurs"?: number | null
           Pruefungsarchiv: boolean
           Qualitaetsbewertung?: number | null
           Spezielles?: string | null
@@ -62,15 +54,11 @@ export type Database = {
           "Dauer der Kurse in Std. Kurzzeitkurs"?: number | null
           "Dauer der Kurse in Wochen Langzeitkurs"?: number | null
           "Eigene Lernunterlagen"?: boolean
-          Experten?: boolean
-          FAQ?: boolean
           ID?: number
           "info freien Plaetze?"?: boolean
           "Info zur Erfolgsquote"?: boolean
           "Kursart (Intensiv- oder Langzeitkurs)"?: string | null
           Nachholmoeglichkeiten?: boolean
-          "Preis pro Std. Intensiverkurs"?: number | null
-          "Preis pro Woche Langzeitkurs"?: number | null
           Pruefungsarchiv?: boolean
           Qualitaetsbewertung?: number | null
           Spezielles?: string | null
@@ -153,92 +141,142 @@ export type Database = {
       GymiProviders: {
         Row: {
           Aufsatzkorrektur: boolean
-          Deutsch: boolean | null
           "E-Learning": boolean
           Einstufungstest: boolean
           Einzelkurse: boolean
-          Franzoesisch: boolean | null
           ID: number
-          "Intensiver Kurs": boolean
-          Mathematik: boolean | null
           "Maximale Anzahl der Teilnehmer": string | null
-          Mitarbeiter: number | null
           Name: string
           Onlinepruefung: boolean
           "Preis Intensiver Kurs": number | null
           "Preis Langzeit Kurs": number | null
-          "Preis-Kategorie": string
           Pruefungssimultaion: boolean | null
           URL: string[] | null
         }
         Insert: {
           Aufsatzkorrektur: boolean
-          Deutsch?: boolean | null
           "E-Learning": boolean
           Einstufungstest: boolean
           Einzelkurse: boolean
-          Franzoesisch?: boolean | null
           ID?: number
-          "Intensiver Kurs": boolean
-          Mathematik?: boolean | null
           "Maximale Anzahl der Teilnehmer"?: string | null
-          Mitarbeiter?: number | null
           Name?: string
           Onlinepruefung: boolean
           "Preis Intensiver Kurs"?: number | null
           "Preis Langzeit Kurs"?: number | null
-          "Preis-Kategorie": string
           Pruefungssimultaion?: boolean | null
           URL?: string[] | null
         }
         Update: {
           Aufsatzkorrektur?: boolean
-          Deutsch?: boolean | null
           "E-Learning"?: boolean
           Einstufungstest?: boolean
           Einzelkurse?: boolean
-          Franzoesisch?: boolean | null
           ID?: number
-          "Intensiver Kurs"?: boolean
-          Mathematik?: boolean | null
           "Maximale Anzahl der Teilnehmer"?: string | null
-          Mitarbeiter?: number | null
           Name?: string
           Onlinepruefung?: boolean
           "Preis Intensiver Kurs"?: number | null
           "Preis Langzeit Kurs"?: number | null
-          "Preis-Kategorie"?: string
           Pruefungssimultaion?: boolean | null
           URL?: string[] | null
         }
         Relationships: []
       }
+      price_history: {
+        Row: {
+          course_type: string
+          id: string
+          price_chf: number
+          provider_id: number
+          recorded_at: string
+        }
+        Insert: {
+          course_type: string
+          id?: string
+          price_chf: number
+          provider_id: number
+          recorded_at?: string
+        }
+        Update: {
+          course_type?: string
+          id?: string
+          price_chf?: number
+          provider_id?: number
+          recorded_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "price_history_provider_id_fkey"
+            columns: ["provider_id"]
+            isOneToOne: false
+            referencedRelation: "GymiProviders"
+            referencedColumns: ["ID"]
+          },
+        ]
+      }
+      providers: {
+        Row: {
+          created_at: string
+          id: number
+          logo_url: string | null
+          name: string
+          official_name: string | null
+          updated_at: string
+          website: string | null
+        }
+        Insert: {
+          created_at?: string
+          id: number
+          logo_url?: string | null
+          name: string
+          official_name?: string | null
+          updated_at?: string
+          website?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: number
+          logo_url?: string | null
+          name?: string
+          official_name?: string | null
+          updated_at?: string
+          website?: string | null
+        }
+        Relationships: []
+      }
       scrape_errors: {
         Row: {
+          ai_suggested_selector: string | null
           created_at: string
           error_type: string
           fixed_at: string | null
           fixed_by_ai: boolean | null
+          html_snapshot: string | null
           id: string
           message: string
           provider_id: number | null
           run_id: string | null
         }
         Insert: {
+          ai_suggested_selector?: string | null
           created_at?: string
           error_type: string
           fixed_at?: string | null
           fixed_by_ai?: boolean | null
+          html_snapshot?: string | null
           id?: string
           message: string
           provider_id?: number | null
           run_id?: string | null
         }
         Update: {
+          ai_suggested_selector?: string | null
           created_at?: string
           error_type?: string
           fixed_at?: string | null
           fixed_by_ai?: boolean | null
+          html_snapshot?: string | null
           id?: string
           message?: string
           provider_id?: number | null
