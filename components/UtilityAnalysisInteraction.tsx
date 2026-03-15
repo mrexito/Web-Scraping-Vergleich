@@ -12,6 +12,10 @@ export interface TransformedGymiProviders {
   priceIntensiv: string | number;
   additionalServices: string;
   URL?: string[] | null;
+  urlLanggymi?: string | null;
+  urlKurzgymi?: string | null;
+  verfuegbarkeitLanggymi?: string | null;
+  verfuegbarkeitKurzgymi?: string | null;
   'Maximale Anzahl der Teilnehmer'?: string | null;
   'E-Learning': boolean;
   Aufsatzkorrektur: boolean;

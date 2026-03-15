@@ -10,21 +10,45 @@ const supabase = createClient(
 
 const PROVIDER_ID = 2;
 const PROVIDER_NAME = 'Lern-Forum';
+const BASE_URL = 'https://www.lern-forum.ch';
+const OVERVIEW_URL = `${BASE_URL}/gymivorbereitung-zuerich`;
 
 const urls = [
-  { url: 'https://www.lern-forum.ch/gymivorbereitung-zuerich/langgymnasium', course_type: 'langgymi' },
-  { url: 'https://www.lern-forum.ch/gymivorbereitung-zuerich/kurzgymnasium', course_type: 'kurzgymi' },
+  { url: `${BASE_URL}/gymivorbereitung-zuerich/langgymnasium`, course_type: 'langgymi' },
+  { url: `${BASE_URL}/gymivorbereitung-zuerich/kurzgymnasium`, course_type: 'kurzgymi' },
 ];
 
 function convertDate(raw: string): string | null {
-  var trimmed = raw.trim();
-  var parts = trimmed.split('.');
+  const trimmed = raw.trim();
+  const parts = trimmed.split('.');
   if (parts.length !== 3) return null;
-  var day = parts[0];
-  var month = parts[1];
-  var year = parts[2];
+  let year = parts[2];
   if (year.length === 2) year = '20' + year;
-  return year + '-' + month + '-' + day;
+  return `${year}-${parts[1]}-${parts[0]}`;
+}
+
+async function scrapeProviderMetadata(page: Page): Promise<{
+  pruefungssimultaion: boolean;
+  aufsatzkorrektur: boolean;
+  pruefungsarchiv: boolean;
+  eLearning: boolean;
+  einzelkurse: boolean;
+}> {
+  console.log(`Lese Anbieter-Metadaten von ${OVERVIEW_URL}...`);
+  await page.goto(OVERVIEW_URL, { waitUntil: 'networkidle2', timeout: 60000 });
+
+  return await page.evaluate(() => {
+    const links = Array.from(document.querySelectorAll('a'))
+      .map(a => a.getAttribute('href') || '');
+
+    return {
+      pruefungssimultaion: links.some(h => h.includes('/pruefungssimulation')),
+      aufsatzkorrektur: links.some(h => h.includes('/aufsatztraining')),
+      pruefungsarchiv: links.some(h => h.includes('/pruefungsarchiv')),
+      eLearning: links.some(h => h.includes('/gymivorbereitung-online')),
+      einzelkurse: links.some(h => h.includes('/private-gymivorbereitung')),
+    };
+  });
 }
 
 async function scrapeCoursesFromPage(page: Page, pageUrl: string, courseType: string) {
@@ -38,77 +62,86 @@ async function scrapeCoursesFromPage(page: Page, pageUrl: string, courseType: st
     console.warn('  Warnung: Kurstabelle nicht gefunden innerhalb 10s, fahre fort...');
   }
 
-  const data = await page.evaluate(function(args: { pageUrl: string; courseType: string }) {
-    var pageUrl = args.pageUrl;
-    var courseType = args.courseType;
-    var results: any[] = [];
+  const data = await page.evaluate((args: { pageUrl: string; courseType: string; baseUrl: string }) => {
+    const { pageUrl, courseType, baseUrl } = args;
+    const results: any[] = [];
 
-    var table = document.querySelector('table.kurstbl');
-    if (!table) table = document.querySelector('table');
+    const table = document.querySelector('table.kurstbl') || document.querySelector('table');
     if (!table) return results;
 
-    var rows = table.querySelectorAll('tbody tr');
+    const rows = table.querySelectorAll('tbody tr');
 
-    for (var r = 0; r < rows.length; r++) {
-      var cells = rows[r].querySelectorAll('td');
+    for (let r = 0; r < rows.length; r++) {
+      const cells = rows[r].querySelectorAll('td');
       if (cells.length < 9) continue;
 
-      var titleRaw = (cells[0].textContent || '').trim();
+      const titleRaw = (cells[0].textContent || '').trim();
       if (!titleRaw) continue;
 
-      var titleLines = titleRaw.split('\n');
-      var titleLine0 = titleLines[0].trim();
-      var titleLine1 = titleLines.length > 1 ? titleLines[1].trim() : '';
+      const titleLines = titleRaw.split('\n');
+      const titleLine0 = titleLines[0].trim();
+      const titleLine1 = titleLines.length > 1 ? titleLines[1].trim() : '';
 
-      var weekday = '';
-      var daysDE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
-      for (var d = 0; d < daysDE.length; d++) {
-        if (titleRaw.indexOf(daysDE[d]) !== -1) { weekday = daysDE[d]; break; }
+      let weekday = '';
+      const daysDE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
+      for (const day of daysDE) {
+        if (titleRaw.includes(day)) { weekday = day; break; }
       }
 
-      var lessonMatch = titleRaw.match(/\((\d+)\s*mal\)/);
-      var lessonCount = lessonMatch ? lessonMatch[1] + 'x' : '';
+      const lessonMatch = titleRaw.match(/\((\d+)\s*mal\)/);
+      const lessonCount = lessonMatch ? lessonMatch[1] + 'x' : '';
 
-      var isOnline = titleRaw.indexOf('Online') !== -1 || titleRaw.indexOf('online') !== -1;
+      const isOnline = titleRaw.includes('Online') || titleRaw.includes('online');
 
-      var title = titleLine0;
+      let title = titleLine0;
       if (titleLine1) title += ' | ' + titleLine1;
       if (weekday && lessonCount) title += ' | ' + weekday + ' ' + lessonCount;
       else if (weekday) title += ' | ' + weekday;
 
-      var startDateRaw = (cells[3].textContent || '').trim();
-      var kurszeit = (cells[4].textContent || '').trim().replace(/(\d{2})\.(\d{2})/g, '$1:$2');
+      const startDateRaw = (cells[3].textContent || '').trim();
+      const kurszeit = (cells[4].textContent || '').trim().replace(/(\d{2})\.(\d{2})/g, '$1:$2');
 
-      var ortLink = cells[5].querySelector('a');
-      var location = ortLink ? (ortLink.textContent || '').trim() : (cells[5].textContent || '').trim();
+      const ortLink = cells[5].querySelector('a');
+      let location = ortLink ? (ortLink.textContent || '').trim() : (cells[5].textContent || '').trim();
       if (!location) location = 'Zürich';
-      if (isOnline || location.indexOf('Hause') !== -1 || location.indexOf('hause') !== -1) {
+      if (isOnline || location.includes('Hause') || location.includes('hause')) {
         location = 'Online';
       }
 
-      var preisRaw = (cells[8].textContent || '').trim();
-      var price_chf: number | null = null;
-      var preisClean = preisRaw.replace(/[^0-9]/g, '');
+      const preisRaw = (cells[8].textContent || '').trim();
+      let price_chf: number | null = null;
+      const preisClean = preisRaw.replace(/[^0-9]/g, '');
       if (preisClean) {
-        var preisNum = parseInt(preisClean, 10);
+        const preisNum = parseInt(preisClean, 10);
         if (preisNum >= 100 && preisNum <= 99999) price_chf = preisNum;
       }
 
+      const freiCell = cells[9] || null;
+      let verfuegbarkeit: string | null = null;
+      if (freiCell) {
+        const freiText = freiCell.textContent?.trim().toLowerCase() || '';
+        if (freiText.includes('ausgebucht')) verfuegbarkeit = 'ausgebucht';
+        else if (freiText.includes('wenige')) verfuegbarkeit = 'wenige';
+        else if (freiText.includes('viele')) verfuegbarkeit = 'viele';
+      }
+
       results.push({
-        title, price_chf, location,
+        title,
+        price_chf,
+        location,
         start_date_raw: startDateRaw,
         occurrence: weekday ? weekday + (kurszeit ? ', ' + kurszeit : '') : kurszeit,
         course_type: courseType,
-        course_url: pageUrl,
+        course_url: pageUrl + '/anmeldung',
         is_online: isOnline,
+        verfuegbarkeit,
       });
     }
 
     return results;
-  }, { pageUrl, courseType });
+  }, { pageUrl, courseType, baseUrl: BASE_URL });
 
-  for (var i = 0; i < data.length; i++) {
-    var item = data[i];
+  for (const item of data) {
     courses.push({
       provider_id: PROVIDER_ID,
       title: item.title,
@@ -120,11 +153,12 @@ async function scrapeCoursesFromPage(page: Page, pageUrl: string, courseType: st
       course_type: item.course_type,
       course_url: item.course_url,
       is_online: item.is_online,
+      verfuegbarkeit: item.verfuegbarkeit,
       last_scraped_at: new Date().toISOString(),
     });
   }
 
-  console.log('  -> ' + courses.length + ' Kurs(e) gefunden auf ' + pageUrl);
+  console.log(`  -> ${courses.length} Kurs(e) gefunden auf ${pageUrl}`);
   return courses;
 }
 
@@ -135,23 +169,66 @@ async function scrapeLernForum(): Promise<void> {
   if (!runId) { console.error('Konnte keinen Scrape-Run starten. Abbruch.'); return; }
 
   try {
-    console.log('Starte ' + PROVIDER_NAME + ' Scraper...');
+    console.log(`Starte ${PROVIDER_NAME} Scraper...`);
     browser = await puppeteer.launch({ headless: true });
 
-    await supabase.from('courses').delete().eq('provider_id', PROVIDER_ID);
-    console.log('Alte Kurse geloescht.');
+    // 1. Anbieter-Metadaten von Übersichtsseite lesen
+    const metaPage = await browser.newPage();
+    await metaPage.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    const metadata = await scrapeProviderMetadata(metaPage);
+    await metaPage.close();
 
+    console.log('Anbieter-Metadaten:', metadata);
+
+    // 2. GymiProviders aktualisieren (nur Felder die dort existieren)
+    const { error: metaError } = await supabase
+      .from('GymiProviders')
+      .update({
+        'Pruefungssimultaion': metadata.pruefungssimultaion,
+        'Aufsatzkorrektur': metadata.aufsatzkorrektur,
+        'E-Learning': metadata.eLearning,
+        'Einzelkurse': metadata.einzelkurse,
+      })
+      .eq('ID', PROVIDER_ID);
+
+    if (metaError) {
+      console.error('Fehler beim Aktualisieren der GymiProviders Metadaten:', metaError.message);
+      await logScrapeError(runId, PROVIDER_ID, 'METADATA_ERROR', metaError.message);
+    } else {
+      console.log('✓ GymiProviders Metadaten aktualisiert');
+    }
+
+    // 3. CourseDetails aktualisieren (Pruefungsarchiv liegt dort)
+    const { error: detailError } = await supabase
+      .from('CourseDetails')
+      .update({
+        'Pruefungsarchiv': metadata.pruefungsarchiv,
+      })
+      .eq('ID', PROVIDER_ID);
+
+    if (detailError) {
+      console.error('Fehler beim Aktualisieren der CourseDetails Metadaten:', detailError.message);
+      await logScrapeError(runId, PROVIDER_ID, 'METADATA_ERROR', detailError.message);
+    } else {
+      console.log('✓ CourseDetails Metadaten aktualisiert');
+    }
+
+    // 4. Alte Kurse löschen
+    await supabase.from('courses').delete().eq('provider_id', PROVIDER_ID);
+    console.log('Alte Kurse gelöscht.');
+
+    // 5. Kurse scrapen
     for (const entry of urls) {
       let page: Page | null = null;
       try {
         page = await browser.newPage();
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
-        console.log('\nLade: ' + entry.url);
+        console.log(`\nLade: ${entry.url}`);
         const courses = await scrapeCoursesFromPage(page, entry.url, entry.course_type);
 
         if (courses.length === 0) {
-          await logScrapeError(runId, PROVIDER_ID, 'NO_COURSES_FOUND', 'Keine Kurse gefunden auf ' + entry.url);
+          await logScrapeError(runId, PROVIDER_ID, 'NO_COURSES_FOUND', `Keine Kurse gefunden auf ${entry.url}`);
           continue;
         }
 
@@ -160,15 +237,15 @@ async function scrapeLernForum(): Promise<void> {
           console.error('Fehler beim Speichern:', error.message);
           await logScrapeError(runId, PROVIDER_ID, 'INSERT_ERROR', error.message);
         } else {
-          console.log('✓ ' + courses.length + ' Kurs(e) gespeichert');
-          courses.slice(0, 3).forEach(function(c: any) {
-            console.log('  -> "' + c.title.substring(0, 60) + '..." | CHF ' + (c.price_chf ?? 'N/A') + ' | ' + c.location + ' | Start: ' + (c.start_date ?? 'N/A'));
+          console.log(`✓ ${courses.length} Kurs(e) gespeichert`);
+          courses.slice(0, 3).forEach((c: any) => {
+            console.log(`  -> "${c.title.substring(0, 50)}..." | CHF ${c.price_chf ?? 'N/A'} | ${c.location} | ${c.verfuegbarkeit ?? 'N/A'}`);
           });
-          if (courses.length > 3) console.log('  ... und ' + (courses.length - 3) + ' weitere Kurse');
+          if (courses.length > 3) console.log(`  ... und ${courses.length - 3} weitere Kurse`);
         }
 
       } catch (err: any) {
-        console.error('Fehler beim Scraping von ' + entry.url + ':', err.message);
+        console.error(`Fehler beim Scraping von ${entry.url}:`, err.message);
         await logScrapeError(runId, PROVIDER_ID, 'SCRAPING_ERROR', err.message);
       } finally {
         if (page) await page.close();
@@ -176,7 +253,7 @@ async function scrapeLernForum(): Promise<void> {
     }
 
     await finishScrapeRun(runId, 'success');
-    console.log('\n' + PROVIDER_NAME + ' Scraping abgeschlossen!');
+    console.log(`\n${PROVIDER_NAME} Scraping abgeschlossen!`);
 
   } catch (err: any) {
     console.error('Allgemeiner Fehler:', err.message);
@@ -187,6 +264,6 @@ async function scrapeLernForum(): Promise<void> {
   }
 }
 
-scrapeLernForum().catch(function(error) {
+scrapeLernForum().catch((error) => {
   console.error('Fehler beim Starten:', error.message);
 });

@@ -69,7 +69,6 @@ export const useScoringStore = create<ScoringStore>((set, get) => ({
       Number(params.find((p) => p.criteria === criteria)?.weight) || 0;
 
     const rated: RatedGymiProviders[] = providers
-      // Anbieter filtern die den gewählten Kurstyp nicht anbieten
       .filter((provider) => {
         const detail = courseDetails.find((d) => d.ID === provider.id);
         const kursart = detail?.['Kursart (Intensiv- oder Langzeitkurs)'];
@@ -77,8 +76,7 @@ export const useScoringStore = create<ScoringStore>((set, get) => ({
         if (kurstyp === 'langgymi') return kursart === 'Lang';
         if (kurstyp === 'kurzgymi') return kursart === 'Intensiv';
         return true;
-    })
-
+      })
       .map((provider) => {
         const detail = courseDetails.find((d) => d.ID === provider.id) ?? {};
         const pp = calculatePricePerformance(
@@ -110,6 +108,10 @@ export const useScoringStore = create<ScoringStore>((set, get) => ({
           location: l,
           totalScore: Math.round(pp + q + f + as + l),
           URL: provider.URL?.length ? provider.URL : [],
+          urlLanggymi: provider.urlLanggymi ?? null,
+          urlKurzgymi: provider.urlKurzgymi ?? null,
+          verfuegbarkeitLanggymi: provider.verfuegbarkeitLanggymi ?? null,
+          verfuegbarkeitKurzgymi: provider.verfuegbarkeitKurzgymi ?? null,
           'E-Learning': provider['E-Learning'],
           Aufsatzkorrektur: provider.Aufsatzkorrektur,
           Einstufungstest: provider.Einstufungstest,

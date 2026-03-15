@@ -10,6 +10,7 @@ const UtilityAnalysis = async () => {
   const [
     { data: rawProviders, error: errorProviders },
     { data: rawCourseDetails, error: errorCourseDetails },
+    { data: rawCourses, error: errorCourses },
   ] = await Promise.all([
     supabase
       .from('GymiProviders')
@@ -33,19 +34,21 @@ const UtilityAnalysis = async () => {
          "info freien Plaetze?", "Info zur Erfolgsquote",
          "Unterstuezung ausserhalb Unterrichtszeit", Spezielles`
       ),
+    supabase
+      .from('courses')
+      .select(
+        `provider_id, price_chf, course_type, location,
+         occurrence, start_date, verfuegbarkeit, is_online, course_url`
+      ),
   ]);
 
-  if (errorProviders) {
-    console.error('Fehler beim Laden der GymiProviders:', errorProviders);
-  }
-
-  if (errorCourseDetails) {
-    console.error('Fehler beim Laden der CourseDetails:', errorCourseDetails);
-  }
+  if (errorProviders) console.error('Fehler beim Laden der GymiProviders:', errorProviders);
+  if (errorCourseDetails) console.error('Fehler beim Laden der CourseDetails:', errorCourseDetails);
+  if (errorCourses) console.error('Fehler beim Laden der Courses:', errorCourses);
 
   const validProviders = parseGymiProviders(rawProviders ?? []);
   const validCourseDetails = parseCourseDetails(rawCourseDetails ?? []);
-  const transformedProviders = transformProviders(validProviders);
+  const transformedProviders = transformProviders(validProviders, rawCourses ?? []);
 
   return (
     <div className="container mx-auto px-4 sm:px-8">
