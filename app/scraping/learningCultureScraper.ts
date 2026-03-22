@@ -16,90 +16,216 @@ const urls = [
   { url: 'https://www.learningculture.ch/kurse/kurzgymi-pruefung', course_type: 'kurzgymi' },
 ];
 
-interface ScrapedCourse {
-  title: string;
-  price_chf: number | null;
-  location: string;
-  start_date: string | null;
-  end_date: string | null;
-  occurrence: string;
-  course_type: string;
-  course_url: string;
+// Konvertiert "21.03.2026" → "2026-03-21"
+function parseDate(raw: string): string | null {
+  const trimmed = raw.trim();
+  const parts = trimmed.split('.');
+  if (parts.length !== 3) return null;
+  let year = parts[2];
+  if (year.length === 2) year = '20' + year;
+  return `${year}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
 }
 
-async function scrapeCoursesFromPage(page: Page, pageUrl: string, courseType: string): Promise<ScrapedCourse[]> {
-  const courses: ScrapedCourse[] = [];
+// Metadaten dynamisch von der Kursseite scrapen
+async function scrapeProviderMetadata(page: Page, pageUrl: string): Promise<{
+  aufsatzkorrektur: boolean;
+  simulationspruefung: boolean;
+  eLearning: boolean;
+  lernunterlagen: boolean;
+  beratungsgespraech: boolean;
+  einstufungstest: boolean;
+}> {
+  console.log(`Lese Anbieter-Metadaten von ${pageUrl}...`);
+  await page.goto(pageUrl, { waitUntil: 'networkidle2', timeout: 60000 });
 
-  const tabIds = await page.$$eval('.tab-list-item a.tab-heading', (links) =>
-    links.map(link => link.getAttribute('href')?.replace('#', '') || '')
+  return await page.evaluate(() => {
+    const bodyText = document.body.innerText.toLowerCase();
+    const bodyHtml = document.body.innerHTML.toLowerCase();
+
+    return {
+      // Aufsatzkorrektur: Tab "Aufsatztraining" existiert auf der Seite
+      aufsatzkorrektur:
+        bodyText.includes('aufsatztraining') || bodyText.includes('aufsatzkorrektur'),
+      // Simulationsprüfung: eigener Tab vorhanden
+      simulationspruefung:
+        bodyText.includes('simulationsprüfung') || bodyText.includes('simulationspruefung'),
+      // E-Learning: kein Online-Angebot bei LC (Präsenz-Anbieter) → false
+      eLearning: bodyHtml.includes('online-kurs') || bodyHtml.includes('e-learning'),
+      // Eigene Lernunterlagen: LC hat eigene Lehrmittel
+      lernunterlagen: bodyText.includes('lehrmittel') || bodyText.includes('lernunterlagen'),
+      // Beratungsgespräch: LC erwähnt pädagogische Leitung / Elterngespräch
+      beratungsgespraech:
+        bodyText.includes('elterngespräch') || bodyText.includes('pädagogische leitung'),
+      // Einstufungstest: kein expliziter Hinweis bei LC
+      einstufungstest: bodyText.includes('einstufungstest') || bodyText.includes('standortbestimmung'),
+    };
+  });
+}
+
+async function scrapeCoursesFromPage(
+  page: Page,
+  pageUrl: string,
+  courseType: string,
+  runId: string
+): Promise<any[]> {
+  const courses: any[] = [];
+
+  await page.goto(pageUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+
+  // Nur Vorbereitungskurs-Tabs scrapen (kein Themen-/Ferien-/Simulationskurse)
+  // Tab-IDs die mit "2026" beginnen enthalten die Hauptvorbereitungskurse
+  const allTabIds = await page.$$eval('.tab-list-item a.tab-heading', (links) =>
+    links.map((link) => (link.getAttribute('href') || '').replace('#', '')).filter(Boolean)
+  );
+  const tabIds = allTabIds.filter(id =>
+    id.startsWith('2026') || id.startsWith('20')
   );
 
-  console.log(`Gefundene Tabs: ${tabIds.join(', ')}`);
+  console.log(`  Gefundene Tabs: ${tabIds.join(', ')}`);
 
   for (const tabId of tabIds) {
-    if (!tabId) continue;
-
+    // Tab anklicken, damit sein Inhalt im DOM aktiv ist
     try {
       await page.click(`.tab-list-item a[href="#${tabId}"]`);
-      await new Promise(resolve => setTimeout(resolve, 500));
-      console.log(`Tab "${tabId}" geöffnet`);
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      console.log(`  Tab "${tabId}" geöffnet`);
     } catch (e) {
-      console.warn(`Konnte Tab "${tabId}" nicht anklicken`);
+      console.warn(`  Konnte Tab "${tabId}" nicht anklicken`);
+      await logScrapeError(runId, PROVIDER_ID, 'TAB_CLICK_ERROR', `Tab ${tabId} nicht anklickbar auf ${pageUrl}`);
       continue;
     }
 
-    const tabCourses = await page.$$eval(
-      `[id="${tabId}"] .div-table-row`,
-      (rows, args) => {
-        const { pageUrl, courseType } = args;
+    // Kursdaten aus data-* Attributen lesen – robuster als textContent-Parsing
+    const tabCourses = await page.evaluate(
+      (args: { tabId: string; pageUrl: string; courseType: string }) => {
+        const { tabId, pageUrl, courseType } = args;
+        const container = document.getElementById(tabId);
+        if (!container) return [];
+
+        const rows = Array.from(container.querySelectorAll('.div-table-row'));
         let lastSubcat = '';
-        return rows.map(row => {
+        const results: any[] = [];
+
+        for (const row of rows) {
+          // Subkategorie weiterführen (z. B. "Teil 1+", "Teil 2")
           const subcatEl = row.querySelector('.course-subcat:not(.no-content) h4');
           if (subcatEl?.textContent?.trim()) {
             lastSubcat = subcatEl.textContent.trim();
           }
 
-          const priceEl = row.querySelector('[data-item-price]');
-          const price = priceEl ? parseInt(priceEl.getAttribute('data-item-price') || '0') : null;
-
-          const locationEl = row.querySelector('.course-location');
-          const location = locationEl?.textContent?.trim() || 'Unbekannt';
-
-          const datesEl = row.querySelector('.course-dates');
-          const datesText = datesEl?.textContent?.trim() || '';
-          const dateParts = datesText.split(' - ');
-
-          const parseDate = (d: string) => {
-            const parts = d.trim().split('.');
-            if (parts.length === 3) return `${parts[2]}-${parts[1]}-${parts[0]}`;
-            return null;
-          };
-
-          const occurrenceEl = row.querySelector('.course-occurrence');
-          const occurrence = occurrenceEl?.textContent?.trim() || '';
-
+          // Alle Kerndaten stehen als data-* am .course-info div (NICHT am span.item-price!)
+          // data-item-name ist nur am .course-info div vorhanden → sicherer Selector
           const infoEl = row.querySelector('[data-item-name]');
-          const itemName = infoEl?.getAttribute('data-item-name') || lastSubcat;
+          if (!infoEl) continue;
 
-          return {
-            title: itemName || lastSubcat,
-            price_chf: price,
+          const itemName = infoEl.getAttribute('data-item-name') || lastSubcat || '';
+          const priceRaw = infoEl.getAttribute('data-item-price') || '';
+          const occurrence = infoEl.getAttribute('data-item-occurrence') || '';
+          const locationAddress = infoEl.getAttribute('data-item-location-address') || '';
+          // .course-location enthält bereits den menschenlesbaren Standortnamen (z.B. "Zürich Seefeld")
+          const locationTextEl = row.querySelector('.course-location');
+          const locationText = locationTextEl?.textContent?.trim() || '';
+          const startDateRaw = infoEl.getAttribute('data-item-course-start-date') || '';
+          // Einzelne Kursdaten als Semikolon-Liste → ersten und letzten nehmen
+          const courseDates = (infoEl.getAttribute('data-item-course-dates') || '')
+            .split(';')
+            .map((d) => d.trim())
+            .filter(Boolean);
+
+          if (!itemName && !occurrence) continue;
+
+          // Preis
+          const price = priceRaw ? parseInt(priceRaw, 10) : null;
+
+          // Standort: .course-location Text ist bereits aufbereitet (z.B. "Zürich Seefeld", "Ort wie Teil 1")
+          // Fallback auf data-item-location-address wenn der Text uninformativ ist
+          let location = locationText;
+          if (!location || location.toLowerCase().includes('ort wie') || location.toLowerCase().includes('ort in planung')) {
+            // Aus der Adresse den Ort extrahieren
+            location = locationAddress
+              .replace(/^ort in planung:\s*/i, '')
+              .replace(/^ort:\s*/i, '')
+              .split(',')[0]
+              .trim();
+          }
+          if (!location || location.toLowerCase().includes('voraussichtlich')) {
+            location = 'Zürich Stadelhofen';
+          }
+
+          // Verfügbarkeit: aus dem Anmelden-Button lesen
+          let verfuegbarkeit: string | null = null;
+          const btn = row.querySelector('button.add-to-cart');
+          if (btn) {
+            const btnText = btn.textContent?.trim().toLowerCase() || '';
+            const isDisabled = btn.hasAttribute('disabled');
+            if (btnText.includes('ausgebucht') || isDisabled) {
+              verfuegbarkeit = 'ausgebucht';
+            } else if (btnText.includes('anmelden')) {
+              verfuegbarkeit = 'viele';
+            }
+          }
+
+          // Start- und End-Datum
+          // data-item-course-start-date hat UTC-Format "2026-03-21 00:00:00 UTC"
+          let startDate: string | null = null;
+          if (startDateRaw) {
+            const match = startDateRaw.match(/(\d{4}-\d{2}-\d{2})/);
+            startDate = match ? match[1] : null;
+          }
+          // Enddatum = letztes Datum aus der Kursdaten-Liste
+          let endDate: string | null = null;
+          if (courseDates.length > 0) {
+            const lastRaw = courseDates[courseDates.length - 1];
+            const parts = lastRaw.split('.');
+            if (parts.length === 3) {
+              endDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+            }
+          }
+
+          // Titel: data-item-name enthält bereits ZAP-Typ und Teilnummer
+          // z.B. "ZAP1 (Langgymi) Vorbereitung Teil 1 (20 Tage, 60 Lektionen) | Samstag, 09:30 - 12:00"
+          const title = `${itemName} | ${occurrence}`;
+
+          results.push({
+            title,
+            price_chf: isNaN(price as number) ? null : price,
             location,
-            start_date: dateParts[0] ? parseDate(dateParts[0]) : null,
-            end_date: dateParts[1] ? parseDate(dateParts[1]) : null,
+            start_date: startDate,
+            end_date: endDate,
             occurrence,
             course_type: courseType,
             course_url: pageUrl,
-          };
-        }).filter(c => c.title && c.occurrence);
+            verfuegbarkeit,
+          });
+        }
+
+        return results;
       },
-      { pageUrl, courseType }
+      { tabId, pageUrl, courseType }
     );
 
-    console.log(`  → ${tabCourses.length} Kurse in Tab "${tabId}" gefunden`);
-    courses.push(...tabCourses);
+    console.log(`  → ${tabCourses.length} Kurs(e) in Tab "${tabId}" gefunden`);
+
+    // Mit provider_id und last_scraped_at anreichern
+    courses.push(
+      ...tabCourses.map((c) => ({
+        provider_id: PROVIDER_ID,
+        ...c,
+        last_scraped_at: new Date().toISOString(),
+      }))
+    );
   }
 
+  if (courses.length === 0) {
+    await logScrapeError(
+      runId,
+      PROVIDER_ID,
+      'NO_COURSES_FOUND',
+      `Keine Kurse gefunden auf ${pageUrl}`
+    );
+  }
+
+  console.log(`  → Total ${courses.length} Kurs(e) auf ${pageUrl}`);
   return courses;
 }
 
@@ -107,64 +233,103 @@ async function scrapeLearningCulture(): Promise<void> {
   let browser: Browser | null = null;
 
   const runId = await startScrapeRun();
-  if (!runId) { console.error('Konnte keinen Scrape-Run starten. Abbruch.'); return; }
+  if (!runId) {
+    console.error('Konnte keinen Scrape-Run starten. Abbruch.');
+    return;
+  }
 
   try {
-    console.log('Starte ' + PROVIDER_NAME + ' Scraper...');
+    console.log(`Starte ${PROVIDER_NAME} Scraper...`);
     browser = await puppeteer.launch({ headless: true });
 
+    // 1. Metadaten von der Langgymi-Seite scrapen (repräsentativ für beide)
+    const metaPage = await browser.newPage();
+    await metaPage.setUserAgent(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    );
+    const metadata = await scrapeProviderMetadata(metaPage, urls[0].url);
+    await metaPage.close();
+    console.log('Anbieter-Metadaten:', metadata);
+
+    // 2. GymiProviders aktualisieren
+    const { error: metaProviderError } = await supabase
+      .from('GymiProviders')
+      .update({
+        'E-Learning': metadata.eLearning,
+        'Aufsatzkorrektur': metadata.aufsatzkorrektur,
+        'Einstufungstest': metadata.einstufungstest,
+      })
+      .eq('ID', PROVIDER_ID);
+
+    if (metaProviderError) {
+      console.error('Fehler GymiProviders:', metaProviderError.message);
+      await logScrapeError(runId, PROVIDER_ID, 'METADATA_ERROR', metaProviderError.message);
+    } else {
+      console.log('✓ GymiProviders Metadaten aktualisiert');
+    }
+
+    // 3. CourseDetails aktualisieren
+    const { error: metaDetailError } = await supabase
+      .from('CourseDetails')
+      .update({
+        'Pruefungsarchiv': metadata.simulationspruefung, // Simprüfung = Prüfungsarchiv-Indikator
+        'Beratungsgespraech': metadata.beratungsgespraech,
+        'Eigene Lernunterlagen': metadata.lernunterlagen,
+      })
+      .eq('ID', PROVIDER_ID);
+
+    if (metaDetailError) {
+      console.error('Fehler CourseDetails:', metaDetailError.message);
+      await logScrapeError(runId, PROVIDER_ID, 'METADATA_ERROR', metaDetailError.message);
+    } else {
+      console.log('✓ CourseDetails Metadaten aktualisiert');
+    }
+
+    // 4. Alte Kurse löschen
     await supabase.from('courses').delete().eq('provider_id', PROVIDER_ID);
     console.log('Alte Kurse gelöscht.');
 
+    // 5. Kurse scrapen und speichern
     for (const entry of urls) {
-      console.log(`\nScraping URL: ${entry.url}`);
       let page: Page | null = null;
-
       try {
         page = await browser.newPage();
-        await page.goto(entry.url, { waitUntil: 'networkidle2', timeout: 60000 });
+        await page.setUserAgent(
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        );
 
-        const courses = await scrapeCoursesFromPage(page, entry.url, entry.course_type);
+        console.log(`\nLade: ${entry.url}`);
+        const courses = await scrapeCoursesFromPage(page, entry.url, entry.course_type, runId);
 
         if (courses.length === 0) {
-          await logScrapeError(runId, PROVIDER_ID, 'NO_COURSES_FOUND', `Keine Kurse gefunden auf ${entry.url}`);
           continue;
         }
 
-        const coursesToInsert = courses.map(c => ({
-          provider_id: PROVIDER_ID,
-          title: c.title,
-          price_chf: c.price_chf,
-          location: c.location,
-          start_date: c.start_date,
-          end_date: c.end_date,
-          occurrence: c.occurrence,
-          course_type: c.course_type,
-          course_url: c.course_url,
-          last_scraped_at: new Date().toISOString(),
-        }));
-
-        const { error } = await supabase.from('courses').insert(coursesToInsert);
+        const { error } = await supabase.from('courses').insert(courses);
         if (error) {
-          console.error('Fehler beim Speichern der Kurse:', error.message);
+          console.error('Fehler beim Speichern:', error.message);
           await logScrapeError(runId, PROVIDER_ID, 'INSERT_ERROR', error.message);
         } else {
-          console.log(`✓ ${coursesToInsert.length} Kurse gespeichert für ${entry.url}`);
+          console.log(`✓ ${courses.length} Kurs(e) gespeichert`);
+          courses.slice(0, 3).forEach((c: any) => {
+            console.log(
+              `  -> "${c.title.substring(0, 55)}" | CHF ${c.price_chf ?? 'N/A'} | ${c.verfuegbarkeit ?? 'N/A'}`
+            );
+          });
+          if (courses.length > 3) console.log(`  ... und ${courses.length - 3} weitere Kurse`);
         }
-
-      } catch (error: any) {
-        console.error(`Fehler beim Scraping von ${entry.url}:`, error.message);
-        await logScrapeError(runId, PROVIDER_ID, 'SCRAPING_ERROR', error.message);
+      } catch (err: any) {
+        console.error(`Fehler beim Scraping von ${entry.url}:`, err.message);
+        await logScrapeError(runId, PROVIDER_ID, 'SCRAPING_ERROR', err.message);
       } finally {
         if (page) await page.close();
       }
     }
 
     await finishScrapeRun(runId, 'success');
-    console.log('\n' + PROVIDER_NAME + ' Scraping abgeschlossen!');
-
-  } catch (error: any) {
-    console.error('Allgemeiner Fehler:', error.message);
+    console.log(`\n${PROVIDER_NAME} Scraping abgeschlossen!`);
+  } catch (err: any) {
+    console.error('Allgemeiner Fehler:', err.message);
     await finishScrapeRun(runId, 'error');
   } finally {
     if (browser) await browser.close();
@@ -172,6 +337,6 @@ async function scrapeLearningCulture(): Promise<void> {
   }
 }
 
-scrapeLearningCulture().catch(error =>
-  console.error('Fehler beim Starten:', error.message)
-);
+scrapeLearningCulture().catch((error) => {
+  console.error('Fehler beim Starten:', error.message);
+});

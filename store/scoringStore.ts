@@ -112,6 +112,7 @@ export const useScoringStore = create<ScoringStore>((set, get) => ({
           urlKurzgymi: provider.urlKurzgymi ?? null,
           verfuegbarkeitLanggymi: provider.verfuegbarkeitLanggymi ?? null,
           verfuegbarkeitKurzgymi: provider.verfuegbarkeitKurzgymi ?? null,
+          Unterrichttag: provider.Unterrichttag,
           'E-Learning': provider['E-Learning'],
           Aufsatzkorrektur: provider.Aufsatzkorrektur,
           Einstufungstest: provider.Einstufungstest,

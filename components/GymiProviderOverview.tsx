@@ -16,6 +16,7 @@ export interface RatedGymiProviders {
     urlKurzgymi?: string | null;
     verfuegbarkeitLanggymi?: string | null;
     verfuegbarkeitKurzgymi?: string | null;
+    Unterrichttag?: string | null;
     'E-Learning'?: boolean;
     Aufsatzkorrektur?: boolean;
     Einstufungstest?: boolean;
@@ -80,7 +81,9 @@ const GymiProviderOverview = ({ gymiProviders, courseDetails }: GymiProviderOver
             console.error('CourseDetail nicht gefunden für:', selected.id);
             return;
         }
-        setSelectedProvider({ ...selected, ...courseDetail });
+        // courseDetail zuerst spreaden, dann selected — so überschreibt der dynamische
+        // Unterrichttag aus RatedGymiProviders den statischen aus CourseDetail
+        setSelectedProvider({ ...courseDetail, ...selected });
         setShowModal(state);
     };
 
@@ -130,7 +133,10 @@ const GymiProviderOverview = ({ gymiProviders, courseDetails }: GymiProviderOver
                                                 </div>
                                                 <div style={{ background: 'var(--color-background-secondary)', borderRadius: '8px', padding: '10px 12px' }}>
                                                     <p style={{ fontSize: '12px', color: 'var(--color-text-secondary)', margin: '0 0 2px' }}>Unterrichtstag</p>
-                                                    <p style={{ fontSize: '13px', fontWeight: 500, margin: 0 }}>{courseDetail?.Unterrichttag || 'Nicht verfügbar'}</p>
+                                                    {/* Dynamischer Wert aus courses-Tabelle hat Priorität über statischen CourseDetail-Wert */}
+                                                    <p style={{ fontSize: '13px', fontWeight: 500, margin: 0 }}>
+                                                        {provider.Unterrichttag || courseDetail?.Unterrichttag || 'Nicht verfügbar'}
+                                                    </p>
                                                 </div>
                                                 <div style={{ background: 'var(--color-background-secondary)', borderRadius: '8px', padding: '10px 12px' }}>
                                                     <p style={{ fontSize: '12px', color: 'var(--color-text-secondary)', margin: '0 0 2px' }}>Standort</p>

@@ -16,6 +16,7 @@ export interface TransformedGymiProviders {
   urlKurzgymi?: string | null;
   verfuegbarkeitLanggymi?: string | null;
   verfuegbarkeitKurzgymi?: string | null;
+  Unterrichttag?: string | null;
   'Maximale Anzahl der Teilnehmer'?: string | null;
   'E-Learning': boolean;
   Aufsatzkorrektur: boolean;

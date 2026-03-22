@@ -28,21 +28,15 @@ function getPriceRange(courses: CourseRow[], providerId: number, courseType: str
 }
 
 function getVerfuegbarkeit(courses: CourseRow[], providerId: number, courseType: string): string | null {
-  // Einzelkurse ausschliessen über Standort "absprache" (gilt für alle Provider)
   const grouped = courses.filter(
     c => c.provider_id === providerId &&
     c.course_type === courseType &&
     !c.location?.toLowerCase().includes('absprache')
   );
-
-  // Falls keine Gruppenkurse gefunden, alle Kurse verwenden
   const relevant = grouped.length > 0
     ? grouped
     : courses.filter(c => c.provider_id === providerId && c.course_type === courseType);
-
   if (relevant.length === 0) return null;
-
-  // Schlechtesten Wert nehmen: ausgebucht > wenige > viele
   if (relevant.some(c => c.verfuegbarkeit === 'ausgebucht')) return 'Einige Kurse ausgebucht';
   if (relevant.some(c => c.verfuegbarkeit === 'wenige')) return 'Wenige Plätze verfügbar';
   if (relevant.some(c => c.verfuegbarkeit === 'viele')) return 'Viele Plätze verfügbar';
@@ -54,6 +48,46 @@ function getCourseUrl(courses: CourseRow[], providerId: number, courseType: stri
     c => c.provider_id === providerId && c.course_type === courseType && c.course_url
   );
   return course?.course_url ?? null;
+}
+
+const WEEKDAY_MAP: Record<string, string> = {
+  'mo': 'Montag', 'di': 'Dienstag', 'mi': 'Mittwoch',
+  'do': 'Donnerstag', 'fr': 'Freitag', 'sa': 'Samstag',
+  'so': 'Sonntag', 'montag': 'Montag', 'dienstag': 'Dienstag',
+  'mittwoch': 'Mittwoch', 'donnerstag': 'Donnerstag', 'freitag': 'Freitag',
+  'samstag': 'Samstag', 'sonntag': 'Sonntag',
+};
+
+const WEEKDAY_ORDER = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
+
+function getUnterrichtstage(courses: CourseRow[], providerId: number, courseType: string): string | null {
+  const filtered = courses.filter(
+    c => c.provider_id === providerId &&
+    c.course_type === courseType &&
+    c.occurrence !== null
+  );
+
+
+  if (filtered.length === 0) return null;
+
+  const found = new Set<string>();
+
+  for (const course of filtered) {
+    const raw = course.occurrence || '';
+    const tokens = raw.split(/[,&\s]+/);
+    for (const token of tokens) {
+      const clean = token.trim().toLowerCase().replace(/[^a-züäö]/g, '');
+      if (WEEKDAY_MAP[clean]) {
+        found.add(WEEKDAY_MAP[clean]);
+      }
+    }
+  }
+
+
+  if (found.size === 0) return null;
+
+  const sorted = WEEKDAY_ORDER.filter(d => found.has(d));
+  return sorted.join(', ');
 }
 
 export function transformProviders(
@@ -81,6 +115,7 @@ export function transformProviders(
       urlKurzgymi: hasCourses ? getCourseUrl(courses, provider.ID, 'kurzgymi') : null,
       verfuegbarkeitLanggymi: getVerfuegbarkeit(courses, provider.ID, 'langgymi'),
       verfuegbarkeitKurzgymi: getVerfuegbarkeit(courses, provider.ID, 'kurzgymi'),
+      Unterrichttag: getUnterrichtstage(courses, provider.ID, 'langgymi') ?? getUnterrichtstage(courses, provider.ID, 'kurzgymi') ?? null,
       'Maximale Anzahl der Teilnehmer': provider['Maximale Anzahl der Teilnehmer'],
       'E-Learning': provider['E-Learning'],
       Aufsatzkorrektur: provider.Aufsatzkorrektur,
