@@ -37,9 +37,9 @@ function getVerfuegbarkeit(courses: CourseRow[], providerId: number, courseType:
     ? grouped
     : courses.filter(c => c.provider_id === providerId && c.course_type === courseType);
   if (relevant.length === 0) return null;
-  if (relevant.some(c => c.verfuegbarkeit === 'ausgebucht')) return 'Einige Kurse ausgebucht';
-  if (relevant.some(c => c.verfuegbarkeit === 'wenige')) return 'Wenige Plätze verfügbar';
   if (relevant.some(c => c.verfuegbarkeit === 'viele')) return 'Viele Plätze verfügbar';
+  if (relevant.some(c => c.verfuegbarkeit === 'wenige')) return 'Wenige Plätze verfügbar';
+  if (relevant.some(c => c.verfuegbarkeit === 'ausgebucht')) return 'Einige Kurse ausgebucht';
   return null;
 }
 

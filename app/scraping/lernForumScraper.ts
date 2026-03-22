@@ -27,12 +27,19 @@ function convertDate(raw: string): string | null {
   return `${year}-${parts[1]}-${parts[0]}`;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Fix 1: Metadaten vollständig — lernunterlagen, beratungsgespraech,
+//         einstufungstest werden jetzt korrekt gesetzt
+// ─────────────────────────────────────────────────────────────────────────────
 async function scrapeProviderMetadata(page: Page): Promise<{
   pruefungssimultaion: boolean;
   aufsatzkorrektur: boolean;
   pruefungsarchiv: boolean;
   eLearning: boolean;
   einzelkurse: boolean;
+  lernunterlagen: boolean;
+  beratungsgespraech: boolean;
+  einstufungstest: boolean;
 }> {
   console.log(`Lese Anbieter-Metadaten von ${OVERVIEW_URL}...`);
   await page.goto(OVERVIEW_URL, { waitUntil: 'networkidle2', timeout: 60000 });
@@ -40,17 +47,29 @@ async function scrapeProviderMetadata(page: Page): Promise<{
   return await page.evaluate(() => {
     const links = Array.from(document.querySelectorAll('a'))
       .map(a => a.getAttribute('href') || '');
+    const bodyText = document.body.innerText.toLowerCase();
 
     return {
       pruefungssimultaion: links.some(h => h.includes('/pruefungssimulation')),
+      // /aufsatztraining deckt sowohl Aufsatzkorrektur als auch Aufsatztraining ab
       aufsatzkorrektur: links.some(h => h.includes('/aufsatztraining')),
       pruefungsarchiv: links.some(h => h.includes('/pruefungsarchiv')),
       eLearning: links.some(h => h.includes('/gymivorbereitung-online')),
       einzelkurse: links.some(h => h.includes('/private-gymivorbereitung')),
+      // Lernunterlagen: Link /kursmaterial vorhanden
+      lernunterlagen: links.some(h => h.includes('/kursmaterial')),
+      // Beratungsgespräch: kein dediziertes Angebot auf lern-forum.ch (nur Telefon)
+      beratungsgespraech: false,
+      // Einstufungstest: Begriff auf der Seite erwähnt
+      einstufungstest: bodyText.includes('einstufungstest'),
     };
   });
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Fix 2: course_url aus cells[1] (<a class="anmeld">) extrahieren
+// Fix 3: Titel-Aufbau korrekt für 3- und 4-zeilige Kurzgymi-Titel
+// ─────────────────────────────────────────────────────────────────────────────
 async function scrapeCoursesFromPage(page: Page, pageUrl: string, courseType: string) {
   const courses: any[] = [];
 
@@ -78,12 +97,16 @@ async function scrapeCoursesFromPage(page: Page, pageUrl: string, courseType: st
       const titleRaw = (cells[0].textContent || '').trim();
       if (!titleRaw) continue;
 
-      const titleLines = titleRaw.split('\n');
-      const titleLine0 = titleLines[0].trim();
-      const titleLine1 = titleLines.length > 1 ? titleLines[1].trim() : '';
+      // Titelzeilen aufteilen (Kurzgymi bis 4 Zeilen, Langgymi 3 Zeilen)
+      // Zeile 0: "Gymivorbereitung Zürich - Kurzgymnasium & HMS"
+      // Zeile 1: "Mathe & Deutsch (inkl. Aufsatztraining)"
+      // Zeile 2: optional "Mathe | D | F | EN (vor den Sommerferien)"
+      // Letzte Zeile: "Samstag (30 mal)"
+      const titleLines = titleRaw.split('\n').map((l: string) => l.trim()).filter(Boolean);
 
-      let weekday = '';
+      // Wochentag: in allen Zeilen suchen (steht in der Zeile mit "(XX mal)")
       const daysDE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
+      let weekday = '';
       for (const day of daysDE) {
         if (titleRaw.includes(day)) { weekday = day; break; }
       }
@@ -93,12 +116,16 @@ async function scrapeCoursesFromPage(page: Page, pageUrl: string, courseType: st
 
       const isOnline = titleRaw.includes('Online') || titleRaw.includes('online');
 
-      let title = titleLine0;
-      if (titleLine1) title += ' | ' + titleLine1;
+      // Titel: Zeile 0 | Zeile 1 | Wochentag Anzahl
+      const titlePart0 = titleLines[0] || '';
+      const titlePart1 = titleLines[1] || '';
+      let title = titlePart0;
+      if (titlePart1) title += ' | ' + titlePart1;
       if (weekday && lessonCount) title += ' | ' + weekday + ' ' + lessonCount;
       else if (weekday) title += ' | ' + weekday;
 
       const startDateRaw = (cells[3].textContent || '').trim();
+      // Punkte-Trennzeichen normalisieren: "17.00 - 19.10" → "17:00 - 19:10"
       const kurszeit = (cells[4].textContent || '').trim().replace(/(\d{2})\.(\d{2})/g, '$1:$2');
 
       const ortLink = cells[5].querySelector('a');
@@ -125,6 +152,10 @@ async function scrapeCoursesFromPage(page: Page, pageUrl: string, courseType: st
         else if (freiText.includes('viele')) verfuegbarkeit = 'viele';
       }
 
+      // course_url: direkte Anmeldeseite des jeweiligen Kurstyps.
+      // (Langgymi → /langgymnasium/anmeldung, Kurzgymi → /kurzgymnasium/anmeldung)
+      const course_url = pageUrl + '/anmeldung';
+
       results.push({
         title,
         price_chf,
@@ -132,7 +163,7 @@ async function scrapeCoursesFromPage(page: Page, pageUrl: string, courseType: st
         start_date_raw: startDateRaw,
         occurrence: weekday ? weekday + (kurszeit ? ', ' + kurszeit : '') : kurszeit,
         course_type: courseType,
-        course_url: pageUrl + '/anmeldung',
+        course_url,
         is_online: isOnline,
         verfuegbarkeit,
       });
@@ -180,7 +211,8 @@ async function scrapeLernForum(): Promise<void> {
 
     console.log('Anbieter-Metadaten:', metadata);
 
-    // 2. GymiProviders aktualisieren (nur Felder die dort existieren)
+    // 2. GymiProviders aktualisieren
+    // Fix 1: Einstufungstest wird jetzt korrekt mitgeschrieben
     const { error: metaError } = await supabase
       .from('GymiProviders')
       .update({
@@ -188,6 +220,7 @@ async function scrapeLernForum(): Promise<void> {
         'Aufsatzkorrektur': metadata.aufsatzkorrektur,
         'E-Learning': metadata.eLearning,
         'Einzelkurse': metadata.einzelkurse,
+        'Einstufungstest': metadata.einstufungstest,
       })
       .eq('ID', PROVIDER_ID);
 
@@ -198,11 +231,14 @@ async function scrapeLernForum(): Promise<void> {
       console.log('✓ GymiProviders Metadaten aktualisiert');
     }
 
-    // 3. CourseDetails aktualisieren (Pruefungsarchiv liegt dort)
+    // 3. CourseDetails aktualisieren
+    // Fix 1: Pruefungsarchiv, Lernunterlagen und Beratungsgespraech werden vollständig gesetzt
     const { error: detailError } = await supabase
       .from('CourseDetails')
       .update({
         'Pruefungsarchiv': metadata.pruefungsarchiv,
+        'Eigene Lernunterlagen': metadata.lernunterlagen,
+        'Beratungsgespraech': metadata.beratungsgespraech,
       })
       .eq('ID', PROVIDER_ID);
 
@@ -217,7 +253,7 @@ async function scrapeLernForum(): Promise<void> {
     await supabase.from('courses').delete().eq('provider_id', PROVIDER_ID);
     console.log('Alte Kurse gelöscht.');
 
-    // 5. Kurse scrapen
+    // 5. Kurse scrapen (Langgymi + Kurzgymi)
     for (const entry of urls) {
       let page: Page | null = null;
       try {
@@ -239,7 +275,7 @@ async function scrapeLernForum(): Promise<void> {
         } else {
           console.log(`✓ ${courses.length} Kurs(e) gespeichert`);
           courses.slice(0, 3).forEach((c: any) => {
-            console.log(`  -> "${c.title.substring(0, 50)}..." | CHF ${c.price_chf ?? 'N/A'} | ${c.location} | ${c.verfuegbarkeit ?? 'N/A'}`);
+            console.log(`  -> "${c.title.substring(0, 60)}..." | CHF ${c.price_chf ?? 'N/A'} | ${c.location} | ${c.verfuegbarkeit ?? 'N/A'}`);
           });
           if (courses.length > 3) console.log(`  ... und ${courses.length - 3} weitere Kurse`);
         }
