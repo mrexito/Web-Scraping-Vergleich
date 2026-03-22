@@ -24,8 +24,6 @@ export const CourseDetailSchema = z.object({
   Beratungsgespraech: z.boolean(),
   'Eigene Lernunterlagen': z.boolean(),
   'info freien Plaetze?': z.boolean(),
-  'Info zur Erfolgsquote': z.boolean(),
-  Nachholmoeglichkeiten: z.boolean(),
   Pruefungsarchiv: z.boolean(),
   'Unterstuezung ausserhalb Unterrichtszeit': z.boolean(),
 

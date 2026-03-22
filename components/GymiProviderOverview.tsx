@@ -216,7 +216,6 @@ const GymiProviderOverview = ({ gymiProviders, courseDetails }: GymiProviderOver
                                             { label: 'Aufsatzkorrektur', val: selectedProvider.Aufsatzkorrektur },
                                             { label: 'Einstufungstest', val: selectedProvider.Einstufungstest },
                                             { label: 'Lernunterlagen', val: selectedProvider['Eigene Lernunterlagen'] },
-                                            { label: 'Nachholmöglichkeiten', val: selectedProvider.Nachholmoeglichkeiten },
                                             { label: 'Prüfungsarchiv', val: selectedProvider.Pruefungsarchiv },
                                             { label: 'Beratungsgespräch', val: selectedProvider.Beratungsgespraech },
                                         ].map((item) => (

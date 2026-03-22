@@ -22,9 +22,7 @@ export type Database = {
           "Eigene Lernunterlagen": boolean
           ID: number
           "info freien Plaetze?": boolean
-          "Info zur Erfolgsquote": boolean
           "Kursart (Intensiv- oder Langzeitkurs)": string | null
-          Nachholmoeglichkeiten: boolean
           Pruefungsarchiv: boolean
           Qualitaetsbewertung: number | null
           Spezielles: string | null
@@ -39,9 +37,7 @@ export type Database = {
           "Eigene Lernunterlagen": boolean
           ID?: number
           "info freien Plaetze?": boolean
-          "Info zur Erfolgsquote": boolean
           "Kursart (Intensiv- oder Langzeitkurs)"?: string | null
-          Nachholmoeglichkeiten: boolean
           Pruefungsarchiv: boolean
           Qualitaetsbewertung?: number | null
           Spezielles?: string | null
@@ -56,9 +52,7 @@ export type Database = {
           "Eigene Lernunterlagen"?: boolean
           ID?: number
           "info freien Plaetze?"?: boolean
-          "Info zur Erfolgsquote"?: boolean
           "Kursart (Intensiv- oder Langzeitkurs)"?: string | null
-          Nachholmoeglichkeiten?: boolean
           Pruefungsarchiv?: boolean
           Qualitaetsbewertung?: number | null
           Spezielles?: string | null
@@ -93,6 +87,7 @@ export type Database = {
           scraped_data_raw: Json | null
           start_date: string | null
           title: string
+          verfuegbarkeit: string | null
         }
         Insert: {
           course_type?: string | null
@@ -110,6 +105,7 @@ export type Database = {
           scraped_data_raw?: Json | null
           start_date?: string | null
           title: string
+          verfuegbarkeit?: string | null
         }
         Update: {
           course_type?: string | null
@@ -127,6 +123,7 @@ export type Database = {
           scraped_data_raw?: Json | null
           start_date?: string | null
           title?: string
+          verfuegbarkeit?: string | null
         }
         Relationships: [
           {

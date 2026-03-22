@@ -28,15 +28,24 @@ function getPriceRange(courses: CourseRow[], providerId: number, courseType: str
 }
 
 function getVerfuegbarkeit(courses: CourseRow[], providerId: number, courseType: string): string | null {
-  const filtered = courses.filter(
-    c => c.provider_id === providerId && c.course_type === courseType
+  // Einzelkurse ausschliessen über Standort "absprache" (gilt für alle Provider)
+  const grouped = courses.filter(
+    c => c.provider_id === providerId &&
+    c.course_type === courseType &&
+    !c.location?.toLowerCase().includes('absprache')
   );
-  if (filtered.length === 0) return null;
+
+  // Falls keine Gruppenkurse gefunden, alle Kurse verwenden
+  const relevant = grouped.length > 0
+    ? grouped
+    : courses.filter(c => c.provider_id === providerId && c.course_type === courseType);
+
+  if (relevant.length === 0) return null;
 
   // Schlechtesten Wert nehmen: ausgebucht > wenige > viele
-  if (filtered.some(c => c.verfuegbarkeit === 'ausgebucht')) return 'Einige Kurse ausgebucht';
-  if (filtered.some(c => c.verfuegbarkeit === 'wenige')) return 'Wenige Plätze verfügbar';
-  if (filtered.some(c => c.verfuegbarkeit === 'viele')) return 'Viele Plätze verfügbar';
+  if (relevant.some(c => c.verfuegbarkeit === 'ausgebucht')) return 'Einige Kurse ausgebucht';
+  if (relevant.some(c => c.verfuegbarkeit === 'wenige')) return 'Wenige Plätze verfügbar';
+  if (relevant.some(c => c.verfuegbarkeit === 'viele')) return 'Viele Plätze verfügbar';
   return null;
 }
 

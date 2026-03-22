@@ -95,7 +95,6 @@ export const calculateAdditionalServices = (
 
   if (provider['E-Learning']) score++;
   if (courseDetail['Eigene Lernunterlagen']) score++;
-  if (courseDetail['Nachholmoeglichkeiten']) score++;
   if (courseDetail['Unterstuezung ausserhalb Unterrichtszeit']) score++;
   if (courseDetail['Pruefungsarchiv']) score++;
   if (provider.Aufsatzkorrektur) score++;

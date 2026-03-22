@@ -16,125 +16,211 @@ const urls = [
   { url: 'https://avidii.ch/gymivorbereitung-kurzzeitgymnasium', course_type: 'kurzgymi' },
 ];
 
-var PREISE: { [key: string]: number | null } = {
-  'langgymi_gruppe': 2950,
-  'kurzgymi_gruppe': 3650,
-  'einzelkurs': null,
-};
+// Konvertiert "27. August 2025" → "2025-08-27"
+function parseDateDE(raw: string): string | null {
+  const months: Record<string, string> = {
+    Januar: '01', Februar: '02', März: '03', April: '04',
+    Mai: '05', Juni: '06', Juli: '07', August: '08',
+    September: '09', Oktober: '10', November: '11', Dezember: '12',
+  };
+  const match = raw.trim().match(/(\d{1,2})\.\s+(\w+)\s+(\d{4})/);
+  if (!match) return null;
+  const month = months[match[2]];
+  if (!month) return null;
+  return `${match[3]}-${month}-${match[1].padStart(2, '0')}`;
+}
 
-var START_DATES: { [key: string]: string } = {
-  'mittwoch': '2025-08-27',
-  'samstag': '2025-08-30',
-};
-var END_DATES: { [key: string]: string } = {
-  'mittwoch': '2026-02-04',
-  'samstag': '2026-02-07',
-};
+// Metadaten dynamisch von der Website scrapen
+async function scrapeProviderMetadata(page: Page, pageUrl: string): Promise<{
+  einstufungstest: boolean;
+  pruefungsarchiv: boolean;
+  beratungsgespraech: boolean;
+  eLearning: boolean;
+  aufsatzkorrektur: boolean;
+  lernunterlagen: boolean;
+}> {
+  console.log(`Lese Anbieter-Metadaten von ${pageUrl}...`);
+  await page.goto(pageUrl, { waitUntil: 'networkidle2', timeout: 60000 });
 
-async function scrapeCoursesFromPage(page: Page, pageUrl: string, courseType: string) {
+  return await page.evaluate(() => {
+    const bodyText = document.body.innerText.toLowerCase();
+    const bodyHtml = document.body.innerHTML.toLowerCase();
+
+    return {
+      einstufungstest: bodyText.includes('standortbestimmung'),
+      pruefungsarchiv: bodyText.includes('alte prüfungen') || bodyText.includes('prüfungstraining'),
+      beratungsgespraech: bodyHtml.includes('erstgespräch') || bodyHtml.includes('erstgesprach'),
+      eLearning: bodyText.includes('lerncockpit') || bodyText.includes('google classroom'),
+      aufsatzkorrektur: bodyText.includes('aufsatztraining') || bodyText.includes('aufsatzkorrektur'),
+      lernunterlagen: bodyText.includes('kursmaterial') || bodyText.includes('lernmaterial'),
+    };
+  });
+}
+
+async function scrapeCoursesFromPage(
+  page: Page,
+  pageUrl: string,
+  courseType: string,
+  runId: string
+) {
   const courses: any[] = [];
 
   await page.goto(pageUrl, { waitUntil: 'networkidle2', timeout: 60000 });
 
+  // 1. Preis dynamisch aus der Preissektion lesen
+  let groupPrice: number | null = null;
   try {
-    await page.waitForSelector('table', { timeout: 15000 });
+    await page.waitForSelector('.pricing-box', { timeout: 10000 });
+    groupPrice = await page.evaluate(() => {
+      const boxes = Array.from(document.querySelectorAll('.pricing-box'));
+      for (const box of boxes) {
+        const tag = box.querySelector('.discount.tag-color');
+        const priceEl = box.querySelector('span.price');
+        if (!tag || !priceEl) continue;
+        const tagText = tag.textContent?.toLowerCase() || '';
+        if (tagText.includes('gruppe') && !priceEl.textContent?.includes('/h')) {
+          const raw = priceEl.textContent?.replace(/[^0-9]/g, '') || '';
+          const num = parseInt(raw, 10);
+          if (!isNaN(num) && num > 100) return num;
+        }
+      }
+      return null;
+    });
+    console.log(`  Gruppenkurs-Preis: CHF ${groupPrice ?? 'nicht gefunden'}`);
   } catch (e) {
-    console.warn('  Warnung: Tabelle nicht gefunden innerhalb 15s, fahre fort...');
+    console.warn('  Warnung: Preis nicht gefunden.');
+    await logScrapeError(runId, PROVIDER_ID, 'MISSING_FIELD', `Preis nicht gefunden auf ${pageUrl}`);
   }
 
-  const data = await page.evaluate(function(args: { pageUrl: string; courseType: string }) {
-    var pageUrl = args.pageUrl;
-    var courseType = args.courseType;
-    var results: any[] = [];
-
-    var tables = document.querySelectorAll('table');
-    var courseTable: Element | null = null;
-
-    for (var t = 0; t < tables.length; t++) {
-      var headerText = (tables[t].querySelector('thead') || tables[t]).textContent || '';
-      if (headerText.indexOf('Gruppe') !== -1 || headerText.indexOf('Wochentag') !== -1) {
-        courseTable = tables[t];
-        break;
+  // 2. Kursdaten aus den Accordion-Einträgen lesen
+  const dateMap: Record<string, { start: string | null; end: string | null }> = {};
+  try {
+    const accordionDates = await page.evaluate(() => {
+      const result: Record<string, { start: string | null; end: string | null }> = {};
+      const accordions = Array.from(document.querySelectorAll('.accordion'));
+      for (const acc of accordions) {
+        const titleEl = acc.querySelector('.accordion__title a');
+        const title = titleEl?.textContent?.toLowerCase() || '';
+        const content = acc.querySelector('.accordion__content');
+        if (!content) continue;
+        // innerHTML lesen (funktioniert auch bei eingeklappten Accordions)
+        // <br> Tags in Leerzeichen umwandeln, dann HTML entfernen
+        const rawHtml = content.innerHTML || '';
+        const cleanText = rawHtml
+          .replace(/<br\s*\/?>/gi, ' ')
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/&nbsp;/g, ' ');
+        let allDates: string[] = [];
+        // Regex sucht alle Datumsmuster: "27. August 2025"
+        const dateRegex = /\d{1,2}\.\s+\w+\s+\d{4}/g;
+        let m;
+        while ((m = dateRegex.exec(cleanText)) !== null) {
+          allDates.push(m[0].trim());
+        }
+        if (allDates.length === 0) continue;
+        let key = '';
+        if (title.includes('mittwoch')) key = 'mittwoch';
+        else if (title.includes('samstag')) key = 'samstag';
+        else key = title.trim();
+        result[key] = { start: allDates[0], end: allDates[allDates.length - 1] };
       }
-    }
+      return result;
+    });
+    Object.assign(dateMap, accordionDates);
+    console.log('  Kursdaten:', JSON.stringify(dateMap));
+  } catch (e) {
+    console.warn('  Warnung: Kursdaten nicht gefunden.');
+    await logScrapeError(runId, PROVIDER_ID, 'MISSING_FIELD', `Kursdaten nicht gefunden auf ${pageUrl}`);
+  }
 
-    if (!courseTable && tables.length > 0) courseTable = tables[0];
-    if (!courseTable) return results;
+  // 3. Kurstabelle lesen
+  try {
+    await page.waitForSelector('table.table', { timeout: 10000 });
+  } catch (e) {
+    console.warn('  Warnung: Kurstabelle nicht gefunden.');
+    await logScrapeError(runId, PROVIDER_ID, 'NO_COURSES_FOUND', `Kurstabelle nicht gefunden auf ${pageUrl}`);
+    return courses;
+  }
 
-    var rows = courseTable.querySelectorAll('tbody tr');
+  const rows = await page.evaluate((args: { pageUrl: string; courseType: string }) => {
+    const { pageUrl, courseType } = args;
+    const table = document.querySelector('table.table');
+    if (!table) return [];
+    const results: any[] = [];
 
-    for (var r = 0; r < rows.length; r++) {
-      var cells = rows[r].querySelectorAll('td');
-      if (cells.length < 4) continue;
+    const trows = Array.from(table.querySelectorAll('tbody tr'));
+    for (const row of trows) {
+      const cells = Array.from(row.querySelectorAll('td'));
+      if (cells.length < 5) continue;
 
-      var gruppe = (cells[0].textContent || '').trim();
+      const gruppe = cells[0]?.textContent?.trim() || '';
       if (!gruppe) continue;
 
-      var isEinzelkurs = gruppe.toLowerCase().indexOf('einzel') !== -1;
+      const location = cells[1]?.textContent?.trim() || 'Zürich Stadelhofen';
+      const weekday = cells[2]?.textContent?.trim() || '';
+      const uhrzeit = cells[3]?.textContent?.trim().replace(/\s*Uhr\s*$/i, '').trim() || '';
 
-      var location = (cells[1].textContent || '').trim();
-      if (!location || location.toLowerCase().indexOf('absprache') !== -1) {
-        location = isEinzelkurs ? 'Nach Absprache' : 'Zürich Stadelhofen';
+      const verfSpan = cells[4]?.querySelector('span');
+      const spanColor = (verfSpan?.getAttribute('style') || '').toLowerCase();
+      const verfText = verfSpan?.textContent?.trim().toLowerCase() || '';
+      let verfuegbarkeit: string | null = null;
+      if (spanColor.includes('fecc32') || verfText.includes('wenige')) {
+        verfuegbarkeit = 'wenige';
+      } else if (spanColor.includes('7fffd8') || verfText.includes('frei')) {
+        verfuegbarkeit = 'viele';
+      } else if (verfText.includes('ausgebucht')) {
+        verfuegbarkeit = 'ausgebucht';
       }
 
-      var weekday = (cells[2].textContent || '').trim();
-      if (weekday.toLowerCase().indexOf('absprache') !== -1) weekday = 'Nach Absprache';
+      const isEinzelkurs = gruppe.toLowerCase().includes('einzel');
+      const occurrence = weekday && uhrzeit ? `${weekday}, ${uhrzeit}` : weekday;
 
-      var uhrzeit = (cells[3].textContent || '').trim().replace(/\s*Uhr\s*$/i, '').trim();
-      if (uhrzeit.toLowerCase().indexOf('absprache') !== -1) uhrzeit = 'Nach Absprache';
-
-      var availability = cells.length > 4 ? (cells[4].textContent || '').trim() : '';
-
-      var typeLabel = courseType === 'langgymi' ? 'Langzeitgymnasium' : 'Kurzzeitgymnasium';
-      var title = 'Gymivorbereitung ' + typeLabel + ' | ' + gruppe;
-      if (!isEinzelkurs && weekday && weekday !== 'Nach Absprache') {
-        title += ' | ' + weekday;
-      }
-
-      var occurrence = '';
-      if (weekday && weekday !== 'Nach Absprache' && uhrzeit && uhrzeit !== 'Nach Absprache') {
-        occurrence = weekday + ', ' + uhrzeit;
-      } else if (weekday) {
-        occurrence = weekday;
-      }
-
-      results.push({
-        title, location, occurrence, availability, course_type: courseType, course_url: pageUrl,
-        weekday: weekday.toLowerCase(), uhrzeit, is_einzelkurs: isEinzelkurs,
+          results.push({
+        gruppe,
+        location: location || 'Zürich Stadelhofen',
+        weekday: weekday.trim().toLowerCase(),
+        uhrzeit,
+        occurrence,
+        verfuegbarkeit,
+        isEinzelkurs,
+        course_type: courseType,
+        course_url: pageUrl,
       });
     }
-
     return results;
   }, { pageUrl, courseType });
 
-  for (var i = 0; i < data.length; i++) {
-    var item = data[i];
-    var priceKey = item.is_einzelkurs ? 'einzelkurs' : (courseType + '_gruppe');
-    var price = PREISE[priceKey] !== undefined ? PREISE[priceKey] : null;
+  for (const row of rows) {
+    const price = row.isEinzelkurs ? null : groupPrice;
+    const weekdayKey = row.weekday;
+    const dates = dateMap[weekdayKey] || { start: null, end: null };
+    const startDate = dates.start ? parseDateDE(dates.start) : null;
+    const endDate = dates.end ? parseDateDE(dates.end) : null;
 
-    var startDate: string | null = null;
-    var endDate: string | null = null;
-    if (!item.is_einzelkurs) {
-      if (item.weekday === 'mittwoch') { startDate = START_DATES['mittwoch']; endDate = END_DATES['mittwoch']; }
-      else if (item.weekday === 'samstag') { startDate = START_DATES['samstag']; endDate = END_DATES['samstag']; }
+    const typeLabel = courseType === 'langgymi' ? 'Langzeitgymnasium' : 'Kurzzeitgymnasium';
+    let title = `Gymivorbereitung ${typeLabel} | ${row.gruppe}`;
+    const weekdayClean = row.weekday.trim();
+    if (!row.isEinzelkurs && weekdayClean && weekdayClean !== 'nach absprache') {
+      title += ` | ${weekdayClean.charAt(0).toUpperCase() + weekdayClean.slice(1)}`;
     }
 
     courses.push({
       provider_id: PROVIDER_ID,
-      title: item.title,
+      title,
       price_chf: price,
-      location: item.location,
+      location: row.location,
       start_date: startDate,
       end_date: endDate,
-      occurrence: item.occurrence,
-      course_type: item.course_type,
-      course_url: item.course_url,
+      occurrence: row.occurrence,
+      course_type: row.course_type,
+      course_url: row.course_url,
       is_online: false,
+      verfuegbarkeit: row.verfuegbarkeit,
       last_scraped_at: new Date().toISOString(),
     });
   }
 
-  console.log('  -> ' + courses.length + ' Kurs(e) gefunden auf ' + pageUrl);
+  console.log(`  -> ${courses.length} Kurs(e) gefunden auf ${pageUrl}`);
   return courses;
 }
 
@@ -145,23 +231,64 @@ async function scrapeAvidii(): Promise<void> {
   if (!runId) { console.error('Konnte keinen Scrape-Run starten. Abbruch.'); return; }
 
   try {
-    console.log('Starte ' + PROVIDER_NAME + ' Scraper...');
+    console.log(`Starte ${PROVIDER_NAME} Scraper...`);
     browser = await puppeteer.launch({ headless: true });
 
-    await supabase.from('courses').delete().eq('provider_id', PROVIDER_ID);
-    console.log('Alte Kurse geloescht.');
+    // 1. Metadaten scrapen
+    const metaPage = await browser.newPage();
+    await metaPage.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    const metadata = await scrapeProviderMetadata(metaPage, urls[0].url);
+    await metaPage.close();
+    console.log('Anbieter-Metadaten:', metadata);
 
+    const { error: metaProviderError } = await supabase
+      .from('GymiProviders')
+      .update({
+        'E-Learning': metadata.eLearning,
+        'Aufsatzkorrektur': metadata.aufsatzkorrektur,
+        'Einstufungstest': metadata.einstufungstest,
+      })
+      .eq('ID', PROVIDER_ID);
+
+    if (metaProviderError) {
+      console.error('Fehler GymiProviders:', metaProviderError.message);
+      await logScrapeError(runId, PROVIDER_ID, 'METADATA_ERROR', metaProviderError.message);
+    } else {
+      console.log('✓ GymiProviders Metadaten aktualisiert');
+    }
+
+    const { error: metaDetailError } = await supabase
+      .from('CourseDetails')
+      .update({
+        'Pruefungsarchiv': metadata.pruefungsarchiv,
+        'Beratungsgespraech': metadata.beratungsgespraech,
+        'Eigene Lernunterlagen': metadata.lernunterlagen,
+      })
+      .eq('ID', PROVIDER_ID);
+
+    if (metaDetailError) {
+      console.error('Fehler CourseDetails:', metaDetailError.message);
+      await logScrapeError(runId, PROVIDER_ID, 'METADATA_ERROR', metaDetailError.message);
+    } else {
+      console.log('✓ CourseDetails Metadaten aktualisiert');
+    }
+
+    // 2. Alte Kurse löschen
+    await supabase.from('courses').delete().eq('provider_id', PROVIDER_ID);
+    console.log('Alte Kurse gelöscht.');
+
+    // 3. Kurse scrapen
     for (const entry of urls) {
       let page: Page | null = null;
       try {
         page = await browser.newPage();
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
-        console.log('\nLade: ' + entry.url);
-        const courses = await scrapeCoursesFromPage(page, entry.url, entry.course_type);
+        console.log(`\nLade: ${entry.url}`);
+        const courses = await scrapeCoursesFromPage(page, entry.url, entry.course_type, runId);
 
         if (courses.length === 0) {
-          await logScrapeError(runId, PROVIDER_ID, 'NO_COURSES_FOUND', 'Keine Kurse gefunden auf ' + entry.url);
+          await logScrapeError(runId, PROVIDER_ID, 'NO_COURSES_FOUND', `Keine Kurse gefunden auf ${entry.url}`);
           continue;
         }
 
@@ -170,14 +297,14 @@ async function scrapeAvidii(): Promise<void> {
           console.error('Fehler beim Speichern:', error.message);
           await logScrapeError(runId, PROVIDER_ID, 'INSERT_ERROR', error.message);
         } else {
-          console.log('✓ ' + courses.length + ' Kurs(e) gespeichert');
-          courses.forEach(function(c: any) {
-            console.log('  -> "' + c.title + '" | ' + c.location + ' | ' + (c.occurrence || 'N/A'));
+          console.log(`✓ ${courses.length} Kurs(e) gespeichert`);
+          courses.slice(0, 3).forEach((c: any) => {
+            console.log(`  -> "${c.title.substring(0, 50)}" | CHF ${c.price_chf ?? 'N/A'} | ${c.verfuegbarkeit ?? 'N/A'}`);
           });
+          if (courses.length > 3) console.log(`  ... und ${courses.length - 3} weitere Kurse`);
         }
-
       } catch (err: any) {
-        console.error('Fehler beim Scraping von ' + entry.url + ':', err.message);
+        console.error(`Fehler beim Scraping von ${entry.url}:`, err.message);
         await logScrapeError(runId, PROVIDER_ID, 'SCRAPING_ERROR', err.message);
       } finally {
         if (page) await page.close();
@@ -185,7 +312,7 @@ async function scrapeAvidii(): Promise<void> {
     }
 
     await finishScrapeRun(runId, 'success');
-    console.log('\n' + PROVIDER_NAME + ' Scraping abgeschlossen!');
+    console.log(`\n${PROVIDER_NAME} Scraping abgeschlossen!`);
 
   } catch (err: any) {
     console.error('Allgemeiner Fehler:', err.message);
@@ -196,6 +323,6 @@ async function scrapeAvidii(): Promise<void> {
   }
 }
 
-scrapeAvidii().catch(function(error) {
+scrapeAvidii().catch((error) => {
   console.error('Fehler beim Starten:', error.message);
 });

@@ -30,8 +30,8 @@ const UtilityAnalysis = async () => {
          "Dauer der Kurse in Std. Kurzzeitkurs",
          "Eigene Lernunterlagen",
          Unterrichttag, Standort, Pruefungsarchiv, Beratungsgespraech,
-         Qualitaetsbewertung, Nachholmoeglichkeiten,
-         "info freien Plaetze?", "Info zur Erfolgsquote",
+         Qualitaetsbewertung,
+         "info freien Plaetze?",
          "Unterstuezung ausserhalb Unterrichtszeit", Spezielles`
       ),
     supabase
