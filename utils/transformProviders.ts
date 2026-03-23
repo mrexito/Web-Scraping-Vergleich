@@ -90,12 +90,24 @@ function getUnterrichtstage(courses: CourseRow[], providerId: number, courseType
   return sorted.join(', ');
 }
 
+type CourseDetailRow = {
+  ID: number;
+  Unterrichttag?: string | null;
+};
+
 export function transformProviders(
   providers: GymiProvider[],
-  courses: CourseRow[] = []
+  courses: CourseRow[] = [],
+  courseDetails: CourseDetailRow[] = []
 ): TransformedGymiProviders[] {
   return providers.map((provider) => {
     const hasCourses = courses.some(c => c.provider_id === provider.ID);
+
+    const unterrichttag =
+      getUnterrichtstage(courses, provider.ID, 'langgymi') ??
+      getUnterrichtstage(courses, provider.ID, 'kurzgymi') ??
+      courseDetails.find(d => d.ID === provider.ID)?.Unterrichttag ??
+      null;
 
     return {
       id: provider.ID,
@@ -115,7 +127,7 @@ export function transformProviders(
       urlKurzgymi: hasCourses ? getCourseUrl(courses, provider.ID, 'kurzgymi') : null,
       verfuegbarkeitLanggymi: getVerfuegbarkeit(courses, provider.ID, 'langgymi'),
       verfuegbarkeitKurzgymi: getVerfuegbarkeit(courses, provider.ID, 'kurzgymi'),
-      Unterrichttag: getUnterrichtstage(courses, provider.ID, 'langgymi') ?? getUnterrichtstage(courses, provider.ID, 'kurzgymi') ?? null,
+      Unterrichttag: unterrichttag,
       'Maximale Anzahl der Teilnehmer': provider['Maximale Anzahl der Teilnehmer'],
       'E-Learning': provider['E-Learning'],
       Aufsatzkorrektur: provider.Aufsatzkorrektur,

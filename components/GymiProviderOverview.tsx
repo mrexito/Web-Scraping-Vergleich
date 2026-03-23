@@ -60,6 +60,151 @@ const verfuegbarkeitBadge = (val?: string | null) => {
     );
 };
 
+// Tooltip-Komponente für Hinweis beim Preis
+const PriceInfoTooltip = () => {
+    const [visible, setVisible] = useState(false);
+    return (
+        <span
+            style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', marginLeft: '4px' }}
+            onMouseEnter={() => setVisible(true)}
+            onMouseLeave={() => setVisible(false)}
+        >
+            <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)', cursor: 'default' }}>ℹ️</span>
+            {visible && (
+                <span style={{
+                    position: 'absolute',
+                    bottom: '120%',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    background: '#2C2C2A',
+                    color: '#F1EFE8',
+                    fontSize: '11px',
+                    padding: '6px 10px',
+                    borderRadius: '6px',
+                    whiteSpace: 'nowrap',
+                    zIndex: 100,
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                }}>
+                    Preise variieren je nach Kurstyp und Fächerwahl
+                </span>
+            )}
+        </span>
+    );
+};
+
+// Preistabelle für NA Modal — alle drei Preiskategorien (Privat / 2er / 4er)
+// Struktur: Kurstyp als Zeilengruppe, Preiskategorie als Spalte
+const NachhilfeAkademiePreisHinweis = ({ kurstyp }: { kurstyp?: 'langgymi' | 'kurzgymi' }) => {
+    const thStyle: React.CSSProperties = {
+        textAlign: 'left',
+        padding: '5px 6px',
+        borderBottom: '1px solid var(--color-border, #e5e7eb)',
+        color: 'var(--color-text-secondary)',
+        fontWeight: 600,
+        fontSize: '11px',
+        whiteSpace: 'nowrap',
+    };
+    const tdLabel: React.CSSProperties = {
+        padding: '5px 6px',
+        fontWeight: 500,
+        fontSize: '11px',
+        color: 'var(--color-text-secondary)',
+        borderBottom: '1px solid var(--color-border, #e5e7eb)',
+        whiteSpace: 'nowrap',
+    };
+    const td: React.CSSProperties = {
+        padding: '5px 6px',
+        fontSize: '11px',
+        borderBottom: '1px solid var(--color-border, #e5e7eb)',
+    };
+    const tdLast: React.CSSProperties = { ...td, borderBottom: 'none' };
+    const sectionHeader: React.CSSProperties = {
+        padding: '5px 6px',
+        fontWeight: 600,
+        fontSize: '11px',
+        background: 'var(--color-background-secondary, #f9fafb)',
+        borderBottom: '1px solid var(--color-border, #e5e7eb)',
+    };
+
+    return (
+        <div style={{ marginTop: '4px' }}>
+            <p style={{ fontSize: '13px', fontWeight: 500, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 8px' }}>
+                Preisstruktur
+            </p>
+            <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse', border: '1px solid var(--color-border, #e5e7eb)', borderRadius: '6px', overflow: 'hidden' }}>
+                    <thead>
+                        <tr>
+                            <th style={thStyle}>Kurstyp</th>
+                            <th style={thStyle}>Fach / Paket</th>
+                            <th style={thStyle}>Privat</th>
+                            <th style={thStyle}>2er-Gruppe</th>
+                            <th style={thStyle}>4er-Gruppe</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {/* Wochenkurse */}
+                        <tr>
+                            <td style={sectionHeader} rowSpan={4}>Wochenkurs<br /><span style={{ fontWeight: 400, color: 'var(--color-text-secondary)' }}>pro Fach, Aug–März</span></td>
+                            <td style={td}>Deutsch Grammatik</td>
+                            <td style={td}>CHF 2'420</td>
+                            <td style={td}>CHF 2'156</td>
+                            <td style={td}>CHF 1'628</td>
+                        </tr>
+                        <tr>
+                            <td style={td}>Aufsatztraining</td>
+                            <td style={td}>CHF 1'320</td>
+                            <td style={td}>CHF 1'078</td>
+                            <td style={td}>CHF 902</td>
+                        </tr>
+                        <tr>
+                            <td style={td}>Mathematik</td>
+                            <td style={td}>CHF 2'420</td>
+                            <td style={td}>CHF 2'156</td>
+                            <td style={td}>CHF 1'628</td>
+                        </tr>
+                        <tr>
+                            <td style={td}>Förderung Vornote</td>
+                            <td style={td}>CHF 2'420</td>
+                            <td style={td}>CHF 2'156</td>
+                            <td style={td}>CHF 1'628</td>
+                        </tr>
+                        {/* Intensivkurse */}
+                        <tr>
+                            <td style={{ ...sectionHeader, borderBottom: 'none' }} rowSpan={kurstyp === 'kurzgymi' ? 3 : 3}>
+                                Intensivkurs<br /><span style={{ fontWeight: 400, color: 'var(--color-text-secondary)' }}>Gesamtpaket, 1 Woche</span>
+                            </td>
+                            <td style={td}>Herbstferien 1</td>
+                            <td style={td}>CHF 1'650</td>
+                            <td style={{ ...td, color: 'var(--color-text-secondary)' }}>—</td>
+                            <td style={td}>CHF 1'230</td>
+                        </tr>
+                        <tr>
+                            <td style={td}>Herbstferien 2</td>
+                            <td style={td}>CHF 1'650</td>
+                            <td style={{ ...td, color: 'var(--color-text-secondary)' }}>—</td>
+                            <td style={td}>CHF 1'230</td>
+                        </tr>
+                        <tr>
+                            <td style={tdLast}>Winterferien</td>
+                            <td style={tdLast}>
+                                {kurstyp === 'kurzgymi' ? 'CHF 2\'200' : 'CHF 1\'650'}
+                            </td>
+                            <td style={{ ...tdLast, color: 'var(--color-text-secondary)' }}>—</td>
+                            <td style={tdLast}>
+                                {kurstyp === 'kurzgymi' ? 'CHF 1\'480' : 'CHF 1\'230'}
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <p style={{ fontSize: '10px', color: 'var(--color-text-secondary)', marginTop: '5px' }}>
+                * Preise exkl. Anmeldegebühr (CHF 100) und Kursmaterial (CHF 50 pro Fach). Intensivkurs: nur Privat oder 4er-Gruppe buchbar.
+            </p>
+        </div>
+    );
+};
+
 const CheckIcon = ({ val }: { val?: boolean }) => (
     <span style={{ color: val ? '#0F6E56' : '#A32D2D', fontSize: '14px', fontWeight: 500 }}>
         {val ? '✓' : '✗'}
@@ -104,7 +249,10 @@ const GymiProviderOverview = ({ gymiProviders, courseDetails }: GymiProviderOver
             <div className="flex min-h-screen flex-col items-start">
                 <h1 className="text-3xl flex mt-7">Gymi-Vorbereitungskurs Anbieter</h1>
                 <div className="container my-12 mx-auto">
-                    <div className="flex flex-wrap -mx-1 lg:-mx-4">
+                    <p className="text-sm text-gray-600 mb-4">
+                    ⚠️ Die angezeigten Preise dienen als Orientierung und sind je nach Anbieter unterschiedlich definiert (Gesamtpaket, pro Fach, Gruppen- oder Einzelpreis). Details sind im jeweiligen Anbieter-Modal ersichtlich.
+                </p>
+                <div className="flex flex-wrap -mx-1 lg:-mx-4">
                         {gymiProviders && gymiProviders.map((provider) => {
                             const courseDetail = courseDetails.find((detail) => detail.ID === provider.id);
                             const cardVerfuegbarkeit = provider.kurstyp === 'langgymi'
@@ -123,12 +271,14 @@ const GymiProviderOverview = ({ gymiProviders, courseDetails }: GymiProviderOver
                                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                                                 <div style={{ background: 'var(--color-background-secondary)', borderRadius: '8px', padding: '10px 12px' }}>
                                                     <p style={{ fontSize: '12px', color: 'var(--color-text-secondary)', margin: '0 0 2px' }}>Preis</p>
-                                                    <p style={{ fontSize: '13px', fontWeight: 500, margin: 0 }}>
+                                                    <p style={{ fontSize: '13px', fontWeight: 500, margin: 0, display: 'flex', alignItems: 'center' }}>
                                                         {provider.rawPrice && provider.rawPrice !== 'Nicht verfügbar'
                                                             ? (typeof provider.rawPrice === 'string' && provider.rawPrice.startsWith('CHF')
                                                                 ? provider.rawPrice
                                                                 : 'CHF ' + provider.rawPrice)
                                                             : 'Nicht verfügbar'}
+                                                        {/* Tooltip nur für Nachhilfe Akademie (ID 6) wegen spezieller Preisstruktur */}
+                                                        {provider.id === 6 && <PriceInfoTooltip />}
                                                     </p>
                                                 </div>
                                                 <div style={{ background: 'var(--color-background-secondary)', borderRadius: '8px', padding: '10px 12px' }}>
@@ -146,7 +296,7 @@ const GymiProviderOverview = ({ gymiProviders, courseDetails }: GymiProviderOver
                                                     <p style={{ fontSize: '12px', color: 'var(--color-text-secondary)', margin: '0 0 4px' }}>Verfügbarkeit</p>
                                                     {cardVerfuegbarkeit
                                                         ? verfuegbarkeitBadge(cardVerfuegbarkeit)
-                                                        : <p style={{ fontSize: '13px', fontWeight: 500, margin: 0 }}>Nicht verfügbar</p>}
+                                                        : <span style={{ background: '#EEF0F5', color: '#4A5270', fontSize: '11px', padding: '2px 8px', borderRadius: '20px', fontStyle: 'italic' }}>Nicht publiziert</span>}
                                                 </div>
                                             </div>
                                         </div>
@@ -172,7 +322,7 @@ const GymiProviderOverview = ({ gymiProviders, courseDetails }: GymiProviderOver
             {showModal && selectedProvider && (
                 <div>
                     <div className="justify-center items-center flex overflow-x-hidden overflow-y-auto fixed inset-0 z-50 outline-none focus:outline-none">
-                        <div className="relative w-auto my-6 mx-auto max-w-lg w-full">
+                        <div className="relative w-auto my-6 mx-auto max-w-2xl w-full">
                             <div className="border-0 rounded-lg shadow-lg relative flex flex-col w-full bg-white outline-none focus:outline-none">
 
                                 <div className="flex items-center justify-between p-5 border-b border-solid rounded-t">
@@ -204,13 +354,18 @@ const GymiProviderOverview = ({ gymiProviders, courseDetails }: GymiProviderOver
                                             <p style={{ fontSize: '12px', color: 'var(--color-text-secondary)', margin: '0 0 2px' }}>Qualität</p>
                                             <p style={{ fontSize: '13px', fontWeight: 500, margin: 0 }}>{qualitaetLabel(selectedProvider.Qualitaetsbewertung)}</p>
                                         </div>
-                                        {verfuegbarkeit && (
-                                            <div style={{ background: 'var(--color-background-secondary)', borderRadius: '8px', padding: '10px 12px' }}>
+                                        <div style={{ background: 'var(--color-background-secondary)', borderRadius: '8px', padding: '10px 12px' }}>
                                                 <p style={{ fontSize: '12px', color: 'var(--color-text-secondary)', margin: '0 0 4px' }}>Verfügbarkeit</p>
-                                                {verfuegbarkeitBadge(verfuegbarkeit)}
+                                                {verfuegbarkeit
+                                                    ? verfuegbarkeitBadge(verfuegbarkeit)
+                                                    : <span style={{ background: '#EEF0F5', color: '#4A5270', fontSize: '11px', padding: '2px 8px', borderRadius: '20px', fontStyle: 'italic' }}>Nicht publiziert</span>}
                                             </div>
-                                        )}
                                     </div>
+
+                                    {/* Preisstruktur-Tabelle nur für Nachhilfe Akademie (ID 6) */}
+                                    {selectedProvider.id === 6 && (
+                                        <NachhilfeAkademiePreisHinweis kurstyp={selectedProvider.kurstyp} />
+                                    )}
 
                                     <p style={{ fontSize: '13px', fontWeight: 500, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '4px 0 0' }}>
                                         Zusatzleistungen

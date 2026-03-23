@@ -48,7 +48,7 @@ const UtilityAnalysis = async () => {
 
   const validProviders = parseGymiProviders(rawProviders ?? []);
   const validCourseDetails = parseCourseDetails(rawCourseDetails ?? []);
-  const transformedProviders = transformProviders(validProviders, rawCourses ?? []);
+  const transformedProviders = transformProviders(validProviders, rawCourses ?? [], validCourseDetails);
 
   return (
     <div className="container mx-auto px-4 sm:px-8">
