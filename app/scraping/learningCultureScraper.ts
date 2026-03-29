@@ -1,11 +1,11 @@
 import 'dotenv/config';
 import puppeteer, { Browser, Page } from 'puppeteer';
 import { createClient } from '@supabase/supabase-js';
-import { startScrapeRun, finishScrapeRun, logScrapeError } from './scrapeUtils';
+import { startScrapeRun, finishScrapeRun, logScrapeError, recordPriceHistory } from './scrapeUtils';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
 const PROVIDER_ID = 4;
@@ -119,7 +119,6 @@ async function scrapeCoursesFromPage(
 
           if (!itemName && !occurrence) continue;
 
-          // Preis
           const price = priceRaw ? parseInt(priceRaw, 10) : null;
 
           let location = locationText;
@@ -134,7 +133,6 @@ async function scrapeCoursesFromPage(
             location = 'Zürich Stadelhofen';
           }
 
-          // Verfügbarkeit prüfen
           let verfuegbarkeit: string | null = null;
           const btn = row.querySelector('button.add-to-cart');
           if (btn) {
@@ -147,13 +145,11 @@ async function scrapeCoursesFromPage(
             }
           }
 
-          // Start- und End-Datum
           let startDate: string | null = null;
           if (startDateRaw) {
             const match = startDateRaw.match(/(\d{4}-\d{2}-\d{2})/);
             startDate = match ? match[1] : null;
           }
-          // Enddatum = letztes Datum aus der Kursdaten-Liste
           let endDate: string | null = null;
           if (courseDates.length > 0) {
             const lastRaw = courseDates[courseDates.length - 1];
@@ -220,7 +216,6 @@ async function scrapeLearningCulture(): Promise<void> {
     console.log(`Starte ${PROVIDER_NAME} Scraper...`);
     browser = await puppeteer.launch({ headless: true });
 
-    // Metadaten von der Langgymi-Seite scrapen (repräsentativ für beide)
     const metaPage = await browser.newPage();
     await metaPage.setUserAgent(
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
@@ -229,7 +224,6 @@ async function scrapeLearningCulture(): Promise<void> {
     await metaPage.close();
     console.log('Anbieter-Metadaten:', metadata);
 
-    // GymiProviders aktualisieren
     const { error: metaProviderError } = await supabase
       .from('GymiProviders')
       .update({
@@ -246,11 +240,10 @@ async function scrapeLearningCulture(): Promise<void> {
       console.log('✓ GymiProviders Metadaten aktualisiert');
     }
 
-    // CourseDetails aktualisieren
     const { error: metaDetailError } = await supabase
       .from('CourseDetails')
       .update({
-        'Pruefungsarchiv': metadata.simulationspruefung, // Simprüfung = Prüfungsarchiv-Indikator
+        'Pruefungsarchiv': metadata.simulationspruefung,
         'Beratungsgespraech': metadata.beratungsgespraech,
         'Eigene Lernunterlagen': metadata.lernunterlagen,
       })
@@ -263,11 +256,9 @@ async function scrapeLearningCulture(): Promise<void> {
       console.log('✓ CourseDetails Metadaten aktualisiert');
     }
 
-    // Alte Kurse löschen
     await supabase.from('courses').delete().eq('provider_id', PROVIDER_ID);
     console.log('Alte Kurse gelöscht.');
 
-    // Kurse scrapen und speichern
     for (const entry of urls) {
       let page: Page | null = null;
       try {
@@ -295,6 +286,15 @@ async function scrapeLearningCulture(): Promise<void> {
             );
           });
           if (courses.length > 3) console.log(`  ... und ${courses.length - 3} weitere Kurse`);
+
+          // NEU: Preisverlauf speichern — Durchschnittspreis aller Kurse dieses Typs
+          const coursesWithPrice = courses.filter(c => c.price_chf !== null);
+          if (coursesWithPrice.length > 0) {
+            const avgPrice = Math.round(
+              coursesWithPrice.reduce((sum: number, c: any) => sum + c.price_chf, 0) / coursesWithPrice.length
+            );
+            await recordPriceHistory(PROVIDER_ID, entry.course_type, avgPrice);
+          }
         }
       } catch (err: any) {
         console.error(`Fehler beim Scraping von ${entry.url}:`, err.message);

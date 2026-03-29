@@ -1,32 +1,34 @@
-import type { GymiProvider } from '@/schemas/gymiProviderSchema';
 import type { CourseDetail } from '@/schemas/courseDetailSchema';
 import { getPreisKategorie } from '@/schemas/gymiProviderSchema';
 
 export type Kurstyp = 'langgymi' | 'kurzgymi';
 
 // 1. Preis-Leistungs-Verhältnis
-// Kurstyp bestimmt welcher Fixpreis für die Kategorie berechnet wird
+// FIX: nimmt neu direkt preis + maxTeilnehmer statt GymiProvider
+// So wird der dynamische Preis aus courses verwendet
 export const calculatePricePerformance = (
-  provider: GymiProvider,
-  weight: number,
-  kurstyp: Kurstyp
+  preis: string | number | null,
+  maxTeilnehmer: string | null | undefined,
+  weight: number
 ): number => {
   let score = 0;
 
-  const preis =
-    kurstyp === 'langgymi'
-      ? provider['Preis Langzeit Kurs']
-      : provider['Preis Intensiver Kurs'];
+  // Preis aus courses kann ein String sein (z.B. "CHF 3290 – 3490")
+  // Wir nehmen den tiefsten Wert für die Kategorie
+  let preisNum: number | null = null;
+  if (typeof preis === 'number') {
+    preisNum = preis;
+  } else if (typeof preis === 'string') {
+    const match = preis.replace(/['\s]/g, '').match(/\d+/);
+    if (match) preisNum = parseInt(match[0], 10);
+  }
 
-  const kategorie = getPreisKategorie(preis);
+  const kategorie = getPreisKategorie(preisNum);
   if (kategorie === 'A') score += 3;
   else if (kategorie === 'B') score += 2;
   else score += 1;
 
-  const maxParticipants = parseInt(
-    provider['Maximale Anzahl der Teilnehmer'] ?? '0',
-    10
-  );
+  const maxParticipants = parseInt(maxTeilnehmer ?? '0', 10);
   if (maxParticipants >= 1 && maxParticipants <= 5) score += 3;
   else if (maxParticipants >= 6 && maxParticipants <= 10) score += 2;
   else if (maxParticipants >= 11 && maxParticipants <= 15) score += 1;
@@ -84,10 +86,14 @@ export const calculateFlexibility = (
 };
 
 // 4. Zusatzleistungen
-// Bug-Fix: Score war 6–12 (Stufe 1 nie erreichbar)
-// Neu: 7 Kriterien, Score 0–7, korrekte Normalisierung
+// FIX: 7 Kriterien gezählt (war vorher 6, Einstufungstest fehlte)
 export const calculateAdditionalServices = (
-  provider: GymiProvider,
+  provider: {
+    'E-Learning': boolean;
+    Aufsatzkorrektur: boolean;
+    Pruefungssimultaion?: boolean | null;
+    Einstufungstest: boolean;  // NEU
+  },
   courseDetail: Partial<CourseDetail>,
   weight: number
 ): number => {
@@ -99,6 +105,7 @@ export const calculateAdditionalServices = (
   if (courseDetail['Pruefungsarchiv']) score++;
   if (provider.Aufsatzkorrektur) score++;
   if (provider.Pruefungssimultaion) score++;
+  if (provider.Einstufungstest) score++;  // NEU: war vorher vergessen
 
   // Score 0–7 → 3 Stufen
   const normalized = score >= 5 ? 3 : score >= 3 ? 2 : 1;

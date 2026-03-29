@@ -1,11 +1,11 @@
 import 'dotenv/config';
 import puppeteer, { Browser, Page } from 'puppeteer';
 import { createClient } from '@supabase/supabase-js';
-import { startScrapeRun, finishScrapeRun, logScrapeError } from './scrapeUtils';
+import { startScrapeRun, finishScrapeRun, logScrapeError, recordPriceHistory } from './scrapeUtils';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
 const PROVIDER_ID = 1;
@@ -37,7 +37,8 @@ const urls = [
 
 async function scrapeProviderMetadata(page: Page, url: string): Promise<{
   preis: number | null;
-  preisErmaessigt: number | null;
+  preisRegular: number | null;
+  discountValidUntil: string | null;
   maxTeilnehmer: string | null;
   aufsatzkorrektur: boolean;
   einstufungstest: boolean;
@@ -56,7 +57,6 @@ async function scrapeProviderMetadata(page: Page, url: string): Promise<{
     const bodyText = document.body.innerText.toLowerCase();
     const bodyHtml = document.body.innerHTML.toLowerCase();
 
-    // Preis
     let preis: number | null = null;
     let preisRegular: number | null = null;
     const preisLi = liTexts.find(t => t.includes('Teilnahmegebühr') || t.includes('CHF'));
@@ -67,7 +67,23 @@ async function scrapeProviderMetadata(page: Page, url: string): Promise<{
       if (matches.length === 1) preisRegular = preis;
     }
 
-    // Max. Teilnehmer
+    let discountValidUntil: string | null = null;
+    const MONTHS: Record<string, string> = {
+      januar: '01', februar: '02', märz: '03', april: '04',
+      mai: '05', juni: '06', juli: '07', august: '08',
+      september: '09', oktober: '10', november: '11', dezember: '12',
+    };
+    if (preisLi) {
+      const discountMatch = preisLi.toLowerCase().match(/bis\s+(\w+)/);
+      if (discountMatch) {
+        const month = MONTHS[discountMatch[1]];
+        if (month) {
+          const year = new Date().getFullYear();
+          discountValidUntil = `${year}-${month}-30`;
+        }
+      }
+    }
+
     let maxTeilnehmer: string | null = null;
     const teilnehmerLi = liTexts.find(t => t.includes('max.') && t.includes('Personen'));
     if (teilnehmerLi) {
@@ -80,7 +96,6 @@ async function scrapeProviderMetadata(page: Page, url: string): Promise<{
       }
     }
 
-    // Qualitätsmerkmale
     const aufsatzkorrektur =
       bodyText.includes('aufsatzkorrekturen') ||
       bodyText.includes('aufsatzkorrektur');
@@ -114,7 +129,6 @@ async function scrapeProviderMetadata(page: Page, url: string): Promise<{
       bodyText.includes('lernunterlagen') ||
       bodyText.includes('skript');
 
-    // Standorte
     const standortLi = liTexts.find(t => t.startsWith('Kursort:'));
     const standorte: string[] = [];
     if (standortLi) {
@@ -126,7 +140,8 @@ async function scrapeProviderMetadata(page: Page, url: string): Promise<{
 
     return {
       preis,
-      preisErmaessigt: preisRegular,
+      preisRegular,
+      discountValidUntil,
       maxTeilnehmer,
       aufsatzkorrektur,
       einstufungstest,
@@ -289,7 +304,6 @@ async function scrapeGymivorbereitungZuerich(): Promise<void> {
     console.log(`Starte ${PROVIDER_NAME} Scraper...`);
     browser = await puppeteer.launch({ headless: true });
 
-    // Metadaten separat pro Kurstyp scrapen (Preise können unterschiedlich sein)
     const metaPage = await browser.newPage();
     await metaPage.setUserAgent(
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
@@ -302,8 +316,6 @@ async function scrapeGymivorbereitungZuerich(): Promise<void> {
     console.log('Metadaten Kurzzeit:', metaKurz);
     await metaPage.close();
 
-    // GymiProviders aktualisieren
-    // Frühbucherpreise für Scoring (Preiskategorie A/B/C) — getrennt pro Kurstyp
     const { error: metaProviderError } = await supabase
       .from('GymiProviders')
       .update({
@@ -311,8 +323,8 @@ async function scrapeGymivorbereitungZuerich(): Promise<void> {
         'Einstufungstest': metaLang.einstufungstest,
         'E-Learning': metaLang.eLearning,
         'Maximale Anzahl der Teilnehmer': metaLang.maxTeilnehmer,
-        'Preis Langzeit Kurs': metaLang.preis,       // Frühbucherpreis Langzeit
-        'Preis Intensiver Kurs': metaKurz.preis,     // Frühbucherpreis Kurzzeit
+        'Preis Langzeit Kurs': metaLang.preis,
+        'Preis Intensiver Kurs': metaKurz.preis,
       })
       .eq('ID', PROVIDER_ID);
 
@@ -323,7 +335,6 @@ async function scrapeGymivorbereitungZuerich(): Promise<void> {
       console.log('✓ GymiProviders Metadaten aktualisiert');
     }
 
-    // CourseDetails aktualisieren
     const { error: metaDetailError } = await supabase
       .from('CourseDetails')
       .update({
@@ -341,11 +352,9 @@ async function scrapeGymivorbereitungZuerich(): Promise<void> {
       console.log('✓ CourseDetails Metadaten aktualisiert');
     }
 
-    // Alte Kurse löschen
     await supabase.from('courses').delete().eq('provider_id', PROVIDER_ID);
     console.log('Alte Kurse gelöscht.');
 
-    // Kurse scrapen (Langgymi + Kurzgymi)
     const allScrapedCourses: any[] = [];
 
     for (const entry of urls) {
@@ -369,8 +378,13 @@ async function scrapeGymivorbereitungZuerich(): Promise<void> {
         }
 
         const meta = entry.course_type === 'langgymi' ? metaLang : metaKurz;
-        const kursPreis = meta.preisErmaessigt ?? meta.preis;
-        const coursesWithPrice = courses.map(c => ({ ...c, price_chf: kursPreis }));
+
+        const coursesWithPrice = courses.map(c => ({
+          ...c,
+          price_chf: meta.preis,
+          price_regular_chf: meta.preisRegular,
+          discount_valid_until: meta.discountValidUntil,
+        }));
 
         const { error } = await supabase.from('courses').insert(coursesWithPrice);
         if (error) {
@@ -380,16 +394,20 @@ async function scrapeGymivorbereitungZuerich(): Promise<void> {
           console.log(`✓ ${courses.length} Kurs(e) [${entry.course_type}] gespeichert`);
           coursesWithPrice.slice(0, 3).forEach((c: any) => {
             console.log(
-              `  -> "${c.title}" | CHF ${c.price_chf ?? 'N/A'} | ` +
-              `${c.location} | ${c.verfuegbarkeit ?? 'N/A'}`
+              `  -> "${c.title}" | CHF ${c.price_chf ?? 'N/A'} (regulär CHF ${c.price_regular_chf ?? 'N/A'}) | ` +
+              `Rabatt bis: ${c.discount_valid_until ?? 'N/A'} | ${c.location} | ${c.verfuegbarkeit ?? 'N/A'}`
             );
           });
           if (courses.length > 3) {
             console.log(`  ... und ${courses.length - 3} weitere Kurse`);
           }
 
-          // Sammlung für Unterrichttag-Ableitung
           allScrapedCourses.push(...courses);
+
+          // NEU: Preisverlauf speichern (Frühbucherpreis)
+          if (meta.preis !== null) {
+            await recordPriceHistory(PROVIDER_ID, entry.course_type, meta.preis);
+          }
         }
 
       } catch (err: any) {
@@ -400,7 +418,6 @@ async function scrapeGymivorbereitungZuerich(): Promise<void> {
       }
     }
 
-    // Unterrichttag aus den gescrapten Kursen ableiten und in CourseDetails speichern
     const unterrichttag = extractUnterrichttage(allScrapedCourses);
     if (unterrichttag) {
       const { error: unterrichttagError } = await supabase

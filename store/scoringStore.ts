@@ -8,7 +8,6 @@ import {
   type Kurstyp,
 } from '@/utils/utilityAnalysis/calculation';
 import { checkForm } from '@/utils/utilityAnalysis/checkForm';
-import type { GymiProvider } from '@/schemas/gymiProviderSchema';
 import type { CourseDetail } from '@/schemas/courseDetailSchema';
 import type { TransformedGymiProviders } from '@/components/UtilityAnalysisInteraction';
 import type { RatedGymiProviders } from '@/components/GymiProviderOverview';
@@ -18,6 +17,14 @@ export interface ScoringParam {
   weight: string;
   criteria: string;
 }
+
+export const CRITERIA_OPTIONS = [
+  { value: 'price-performance', label: 'Preis-Leistungs-Verhältnis' },
+  { value: 'quality', label: 'Qualität des Unterrichts' },
+  { value: 'flexibility', label: 'Flexibilität der Kursgestaltung' },
+  { value: 'additional-services', label: 'Zusatzleistungen' },
+  { value: 'location', label: 'Standort' },
+];
 
 interface ScoringStore {
   params: ScoringParam[];
@@ -34,13 +41,11 @@ interface ScoringStore {
   reset: () => void;
 }
 
-const initialParams: ScoringParam[] = [
-  { id: 1, weight: '', criteria: '' },
-  { id: 2, weight: '', criteria: '' },
-  { id: 3, weight: '', criteria: '' },
-  { id: 4, weight: '', criteria: '' },
-  { id: 5, weight: '', criteria: '' },
-];
+const initialParams: ScoringParam[] = CRITERIA_OPTIONS.map((opt, index) => ({
+  id: index + 1,
+  weight: '',
+  criteria: opt.value,
+}));
 
 export const useScoringStore = create<ScoringStore>((set, get) => ({
   params: initialParams,
@@ -79,24 +84,33 @@ export const useScoringStore = create<ScoringStore>((set, get) => ({
       })
       .map((provider) => {
         const detail = courseDetails.find((d) => d.ID === provider.id) ?? {};
-        const pp = calculatePricePerformance(
-          provider as unknown as GymiProvider,
-          getWeight('price-performance'),
-          kurstyp
-        );
-        const q = calculateQuality(detail, getWeight('quality'));
-        const f = calculateFlexibility(detail, getWeight('flexibility'), kurstyp);
-        const as = calculateAdditionalServices(
-          provider as unknown as GymiProvider,
-          detail,
-          getWeight('additional-services')
-        );
-        const l = calculateLocation(detail, getWeight('location'));
 
+        // FIX: Preis kommt jetzt aus courses (via transformProviders) statt GymiProviders
         const preis =
           kurstyp === 'langgymi'
             ? provider.pricePerformance
             : provider.priceIntensiv;
+
+        const pp = calculatePricePerformance(
+          preis,
+          provider['Maximale Anzahl der Teilnehmer'],
+          getWeight('price-performance')
+        );
+        const q = calculateQuality(detail, getWeight('quality'));
+        const f = calculateFlexibility(detail, getWeight('flexibility'), kurstyp);
+
+        // FIX: provider wird direkt übergeben — kein cast zu GymiProvider mehr nötig
+        const as = calculateAdditionalServices(
+          {
+            'E-Learning': provider['E-Learning'],
+            Aufsatzkorrektur: provider.Aufsatzkorrektur,
+            Pruefungssimultaion: provider.Pruefungssimultaion,
+            Einstufungstest: provider.Einstufungstest,  // NEU
+          },
+          detail,
+          getWeight('additional-services')
+        );
+        const l = calculateLocation(detail, getWeight('location'));
 
         return {
           id: provider.id,

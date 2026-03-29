@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
 export async function startScrapeRun(scraperType: string = 'puppeteer'): Promise<string | null> {
@@ -48,5 +48,27 @@ export async function logScrapeError(
     console.error('Fehler beim Loggen des Scrape-Fehlers:', error.message);
   } else {
     console.warn(`Fehler geloggt für Provider ${providerId}: ${message}`);
+  }
+}
+
+// NEU: Preisverlauf speichern — wird von allen Scrapern nach erfolgreichem Insert aufgerufen
+export async function recordPriceHistory(
+  providerId: number,
+  courseType: string,
+  priceChf: number
+): Promise<void> {
+  const { error } = await supabase
+    .from('price_history')
+    .insert({
+      provider_id: providerId,
+      price_chf: priceChf,
+      course_type: courseType,
+      recorded_at: new Date().toISOString(),
+    });
+
+  if (error) {
+    console.error('Fehler beim Speichern der price_history:', error.message);
+  } else {
+    console.log(`✓ price_history: Provider ${providerId} | ${courseType} | CHF ${priceChf}`);
   }
 }

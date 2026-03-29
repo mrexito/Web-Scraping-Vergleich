@@ -1,6 +1,6 @@
 'use client';
 import { useEffect } from 'react';
-import { useScoringStore } from '@/store/scoringStore';
+import { useScoringStore, CRITERIA_OPTIONS } from '@/store/scoringStore';
 import GymiProviderOverview from './GymiProviderOverview';
 import type { CourseDetail } from '@/schemas/courseDetailSchema';
 import type { Kurstyp } from '@/utils/utilityAnalysis/calculation';
@@ -31,14 +31,6 @@ interface Props {
   CourseDetails: CourseDetail[];
 }
 
-const CRITERIA_OPTIONS = [
-  { value: 'price-performance', label: 'Preis-Leistungs-Verhältnis' },
-  { value: 'quality', label: 'Qualität des Unterrichts' },
-  { value: 'flexibility', label: 'Flexibilität der Kursgestaltung' },
-  { value: 'additional-services', label: 'Zusatzleistungen' },
-  { value: 'location', label: 'Standort' },
-];
-
 const KURSTYP_OPTIONS: { value: Kurstyp; label: string }[] = [
   { value: 'langgymi', label: 'Langzeitgymnasium' },
   { value: 'kurzgymi', label: 'Kurzzeitgymnasium' },
@@ -57,12 +49,10 @@ export default function UtilityAnalysisInteraction({ GymiProviders, CourseDetail
     reset,
   } = useScoringStore();
 
+  // NEU: Kriterien müssen nicht mehr manuell gesetzt werden — initialParams im Store erledigt das
   useEffect(() => {
     setProviders(GymiProviders);
     setCourseDetails(CourseDetails);
-    CRITERIA_OPTIONS.forEach((opt, index) => {
-      updateParam(index, 'criteria', opt.value);
-    });
   }, []);
 
   const handleCalculate = () => {
@@ -70,13 +60,8 @@ export default function UtilityAnalysisInteraction({ GymiProviders, CourseDetail
     if (result !== true) alert(result);
   };
 
-  const handleReset = () => {
-    reset();
-    // Kriterien nach Reset neu setzen, da reset() den Store leert
-    CRITERIA_OPTIONS.forEach((opt, index) => {
-      updateParam(index, 'criteria', opt.value);
-    });
-  };
+  // NEU: handleReset ruft nur noch reset() auf — kein manuelles Kriterien-Setzen nötig
+  const handleReset = () => reset();
 
   if (ratedProviders.length > 0) {
     return (

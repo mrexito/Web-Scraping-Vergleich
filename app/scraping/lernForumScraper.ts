@@ -1,11 +1,11 @@
 import 'dotenv/config';
 import puppeteer, { Browser, Page } from 'puppeteer';
 import { createClient } from '@supabase/supabase-js';
-import { startScrapeRun, finishScrapeRun, logScrapeError } from './scrapeUtils';
+import { startScrapeRun, finishScrapeRun, logScrapeError, recordPriceHistory } from './scrapeUtils';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
 const PROVIDER_ID = 2;
@@ -26,7 +26,6 @@ function convertDate(raw: string): string | null {
   if (year.length === 2) year = '20' + year;
   return `${year}-${parts[1]}-${parts[0]}`;
 }
-
 
 async function scrapeProviderMetadata(page: Page): Promise<{
   pruefungssimultaion: boolean;
@@ -59,7 +58,6 @@ async function scrapeProviderMetadata(page: Page): Promise<{
   });
 }
 
-
 async function scrapeCoursesFromPage(page: Page, pageUrl: string, courseType: string) {
   const courses: any[] = [];
 
@@ -87,10 +85,8 @@ async function scrapeCoursesFromPage(page: Page, pageUrl: string, courseType: st
       const titleRaw = (cells[0].textContent || '').trim();
       if (!titleRaw) continue;
 
-      
       const titleLines = titleRaw.split('\n').map((l: string) => l.trim()).filter(Boolean);
 
-      // Wochentag: in allen Zeilen suchen
       const daysDE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
       let weekday = '';
       for (const day of daysDE) {
@@ -136,8 +132,6 @@ async function scrapeCoursesFromPage(page: Page, pageUrl: string, courseType: st
         else if (freiText.includes('viele')) verfuegbarkeit = 'viele';
       }
 
-      // course_url: direkte Anmeldeseite des jeweiligen Kurstyps.
-      // (Langgymi → /langgymnasium/anmeldung, Kurzgymi → /kurzgymnasium/anmeldung)
       const course_url = pageUrl + '/anmeldung';
 
       results.push({
@@ -187,7 +181,6 @@ async function scrapeLernForum(): Promise<void> {
     console.log(`Starte ${PROVIDER_NAME} Scraper...`);
     browser = await puppeteer.launch({ headless: true });
 
-    // Anbieter-Metadaten von Übersichtsseite lesen
     const metaPage = await browser.newPage();
     await metaPage.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
     const metadata = await scrapeProviderMetadata(metaPage);
@@ -195,7 +188,6 @@ async function scrapeLernForum(): Promise<void> {
 
     console.log('Anbieter-Metadaten:', metadata);
 
-    // GymiProviders aktualisieren
     const { error: metaError } = await supabase
       .from('GymiProviders')
       .update({
@@ -214,7 +206,6 @@ async function scrapeLernForum(): Promise<void> {
       console.log('✓ GymiProviders Metadaten aktualisiert');
     }
 
-    // CourseDetails aktualisieren
     const { error: detailError } = await supabase
       .from('CourseDetails')
       .update({
@@ -231,11 +222,9 @@ async function scrapeLernForum(): Promise<void> {
       console.log('✓ CourseDetails Metadaten aktualisiert');
     }
 
-    // Alte Kurse löschen
     await supabase.from('courses').delete().eq('provider_id', PROVIDER_ID);
     console.log('Alte Kurse gelöscht.');
 
-    // Kurse scrapen (Langgymi + Kurzgymi)
     for (const entry of urls) {
       let page: Page | null = null;
       try {
@@ -260,6 +249,15 @@ async function scrapeLernForum(): Promise<void> {
             console.log(`  -> "${c.title.substring(0, 60)}..." | CHF ${c.price_chf ?? 'N/A'} | ${c.location} | ${c.verfuegbarkeit ?? 'N/A'}`);
           });
           if (courses.length > 3) console.log(`  ... und ${courses.length - 3} weitere Kurse`);
+
+          // NEU: Preisverlauf speichern — Durchschnittspreis aller Kurse dieses Typs
+          const coursesWithPrice = courses.filter(c => c.price_chf !== null);
+          if (coursesWithPrice.length > 0) {
+            const avgPrice = Math.round(
+              coursesWithPrice.reduce((sum: number, c: any) => sum + c.price_chf, 0) / coursesWithPrice.length
+            );
+            await recordPriceHistory(PROVIDER_ID, entry.course_type, avgPrice);
+          }
         }
 
       } catch (err: any) {

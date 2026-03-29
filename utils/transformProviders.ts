@@ -1,19 +1,8 @@
 import type { GymiProvider } from '@/schemas/gymiProviderSchema';
+import type { Course } from '@/schemas/courseSchema';
 import type { TransformedGymiProviders } from '@/components/UtilityAnalysisInteraction';
 
-type CourseRow = {
-  provider_id: number;
-  price_chf: number | null;
-  course_type: string | null;
-  location: string | null;
-  occurrence: string | null;
-  start_date: string | null;
-  verfuegbarkeit: string | null;
-  is_online: boolean | null;
-  course_url: string | null;
-};
-
-function getPriceRange(courses: CourseRow[], providerId: number, courseType: string): string | number {
+function getPriceRange(courses: Course[], providerId: number, courseType: string): string | number {
   const filtered = courses.filter(
     c => c.provider_id === providerId &&
     c.course_type === courseType &&
@@ -27,7 +16,7 @@ function getPriceRange(courses: CourseRow[], providerId: number, courseType: str
   return `CHF ${min.toLocaleString('de-CH')} – ${max.toLocaleString('de-CH')}`;
 }
 
-function getVerfuegbarkeit(courses: CourseRow[], providerId: number, courseType: string): string | null {
+function getVerfuegbarkeit(courses: Course[], providerId: number, courseType: string): string | null {
   const grouped = courses.filter(
     c => c.provider_id === providerId &&
     c.course_type === courseType &&
@@ -43,7 +32,7 @@ function getVerfuegbarkeit(courses: CourseRow[], providerId: number, courseType:
   return null;
 }
 
-function getCourseUrl(courses: CourseRow[], providerId: number, courseType: string): string | null {
+function getCourseUrl(courses: Course[], providerId: number, courseType: string): string | null {
   const course = courses.find(
     c => c.provider_id === providerId && c.course_type === courseType && c.course_url
   );
@@ -60,13 +49,12 @@ const WEEKDAY_MAP: Record<string, string> = {
 
 const WEEKDAY_ORDER = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
 
-function getUnterrichtstage(courses: CourseRow[], providerId: number, courseType: string): string | null {
+function getUnterrichtstage(courses: Course[], providerId: number, courseType: string): string | null {
   const filtered = courses.filter(
     c => c.provider_id === providerId &&
     c.course_type === courseType &&
     c.occurrence !== null
   );
-
 
   if (filtered.length === 0) return null;
 
@@ -83,7 +71,6 @@ function getUnterrichtstage(courses: CourseRow[], providerId: number, courseType
     }
   }
 
-
   if (found.size === 0) return null;
 
   const sorted = WEEKDAY_ORDER.filter(d => found.has(d));
@@ -97,7 +84,7 @@ type CourseDetailRow = {
 
 export function transformProviders(
   providers: GymiProvider[],
-  courses: CourseRow[] = [],
+  courses: Course[] = [],
   courseDetails: CourseDetailRow[] = []
 ): TransformedGymiProviders[] {
   return providers.map((provider) => {

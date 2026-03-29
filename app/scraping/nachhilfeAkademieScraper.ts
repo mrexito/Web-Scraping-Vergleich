@@ -1,11 +1,11 @@
 import 'dotenv/config';
 import puppeteer, { Browser, Page } from 'puppeteer';
 import { createClient } from '@supabase/supabase-js';
-import { startScrapeRun, finishScrapeRun, logScrapeError } from './scrapeUtils';
+import { startScrapeRun, finishScrapeRun, logScrapeError, recordPriceHistory } from './scrapeUtils';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
 const PROVIDER_ID = 6;
@@ -14,7 +14,6 @@ const PROVIDER_NAME = 'Nachhilfe Akademie';
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
-// Metadaten von der Infoseite (reichhaltigerer Content als die Preisseiten)
 const METADATA_URL = 'https://nachhilfeakademie.ch/langzeitgymnasium/';
 
 const urls = [
@@ -22,14 +21,12 @@ const urls = [
     url: 'https://nachhilfeakademie.ch/preise-gymivorbereitung-langgymnasium/',
     course_type: 'langgymi',
     intensivTableId: 'tablepress-3',
-    // Korrekte Info-/Angebotsseite (nicht die Anmeldungsseite)
     anmeldungUrl: 'https://nachhilfeakademie.ch/langzeitgymnasium/',
   },
   {
     url: 'https://nachhilfeakademie.ch/preise-gymivorbereitung-kurzgymnasium/',
     course_type: 'kurzgymi',
     intensivTableId: 'tablepress-4',
-    // Korrekte Info-/Angebotsseite (nicht die Anmeldungsseite)
     anmeldungUrl: 'https://nachhilfeakademie.ch/kurzgymnasium/',
   },
 ];
@@ -48,36 +45,28 @@ async function scrapeProviderMetadata(page: Page): Promise<{
   await page.goto(METADATA_URL, { waitUntil: 'networkidle2', timeout: 60000 });
 
   return await page.evaluate(() => {
-    // eLearning: "Digital Classroom" in den Feature-Boxen (.feature_info)
     const featureTexts = Array.from(document.querySelectorAll('.feature_info'))
       .map(el => el.textContent?.toLowerCase() || '');
     const eLearning = featureTexts.some(t =>
       t.includes('digital classroom') || t.includes('digitale klassenräume')
     );
 
-    // Aufsatzkorrektur: "Aufsatztraining" im Accordion-Body
     const accordionBodies = Array.from(document.querySelectorAll('.vc_tta-panel-body'))
       .map(el => el.textContent?.toLowerCase() || '');
     const aufsatzkorrektur = accordionBodies.some(t => t.includes('aufsatztraining'));
 
-    // Einstufungstest: CTA-Button mit href="/einstufungstest/" sichtbar
     const links = Array.from(document.querySelectorAll('a'))
       .map(a => a.getAttribute('href') || '');
     const einstufungstest = links.some(h => h.includes('/einstufungstest'));
 
-    // Simulationsprüfungen: eigene Section vorhanden
     const bodyText = document.body.innerText.toLowerCase();
     const pruefungssimulation = bodyText.includes('simulationsprüfung');
 
-    // Lernunterlagen: Feature-Box mit "Lehrmittel" oder "ACHTUNG, FERTIG, GYMI!"
     const lernunterlagen = featureTexts.some(t =>
       t.includes('lehrmittel') || t.includes('achtung, fertig, gymi')
     );
 
-    // Beratungsgespräch: kein dediziertes Angebot auf dieser Seite
     const beratungsgespraech = bodyText.includes('beratungsgespräch');
-
-    // Standorte: aus Accordion-Panel "Standorte und Kontakt"
 
     const cities = new Set<string>();
     const panels = Array.from(document.querySelectorAll('.vc_tta-panel'));
@@ -96,7 +85,6 @@ async function scrapeProviderMetadata(page: Page): Promise<{
       ? Array.from(cities).join(', ')
       : 'Zürich, Winterthur, Basel';
 
-    // Unterrichtstage aus Accordion "Unterrichtszeiten"
     const WEEKDAY_ORDER = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
     const foundDays = new Set<string>();
     for (const panel of panels) {
@@ -124,14 +112,12 @@ async function scrapeProviderMetadata(page: Page): Promise<{
   });
 }
 
-
 function parseChfPrice(raw: string): number | null {
   const cleaned = raw.replace(/['\u2019\u0060\s]/g, '').replace(/[^0-9]/g, '');
   if (!cleaned) return null;
   const num = parseInt(cleaned, 10);
   return num >= 100 && num <= 50000 ? num : null;
 }
-
 
 function parseDateRange(raw: string): { start: string | null; end: string | null } {
   const matches = raw.match(/(\d{2}\.\d{2}\.\d{4})/g);
@@ -146,7 +132,6 @@ function parseDateRange(raw: string): { start: string | null; end: string | null
   };
 }
 
-
 async function scrapeWochenkurse(
   page: Page,
   courseType: string,
@@ -156,7 +141,7 @@ async function scrapeWochenkurse(
 ): Promise<any[]> {
   const courses: any[] = [];
 
-   try {
+  try {
     await page.waitForSelector('table#tablepress-2 tbody tr', { timeout: 15000 });
   } catch {
     console.warn('  Warnung: tablepress-2 (Wochenkurse) nicht innerhalb 15s gefunden.');
@@ -164,7 +149,6 @@ async function scrapeWochenkurse(
   }
 
   const rows = await page.evaluate(() => {
-  
     const table = document.querySelector('table#tablepress-2');
     if (!table) return [];
     return Array.from(table.querySelectorAll('tbody tr')).map(row => {
@@ -201,15 +185,13 @@ async function scrapeWochenkurse(
   return courses;
 }
 
-
-// Intensivkurse aus kurstyp-spezifischer Tabelle scrapen
 async function scrapeIntensivkurse(
   page: Page,
   courseType: string,
   standorte: string,
   pageUrl: string,
   anmeldungUrl: string,
-  tableId: string,   
+  tableId: string,
 ): Promise<any[]> {
   const courses: any[] = [];
 
@@ -259,7 +241,6 @@ async function scrapeIntensivkurse(
   return courses;
 }
 
-
 async function scrapeNachhilfeAkademie(): Promise<void> {
   let browser: Browser | null = null;
 
@@ -273,14 +254,12 @@ async function scrapeNachhilfeAkademie(): Promise<void> {
     console.log(`Starte ${PROVIDER_NAME} Scraper...`);
     browser = await puppeteer.launch({ headless: true });
 
-    // Metadaten von der Infoseite lesen 
     const metaPage = await browser.newPage();
     await metaPage.setUserAgent(USER_AGENT);
     const metadata = await scrapeProviderMetadata(metaPage);
     await metaPage.close();
     console.log('Anbieter-Metadaten:', metadata);
 
-    // GymiProviders aktualisieren
     const { error: metaProviderError } = await supabase
       .from('GymiProviders')
       .update({
@@ -298,7 +277,6 @@ async function scrapeNachhilfeAkademie(): Promise<void> {
       console.log('✓ GymiProviders Metadaten aktualisiert');
     }
 
-    // CourseDetails aktualisieren 
     const { error: metaDetailError } = await supabase
       .from('CourseDetails')
       .update({
@@ -317,11 +295,9 @@ async function scrapeNachhilfeAkademie(): Promise<void> {
       console.log('✓ CourseDetails Metadaten aktualisiert');
     }
 
-    // Alte Kurse löschen 
     await supabase.from('courses').delete().eq('provider_id', PROVIDER_ID);
     console.log('Alte Kurse gelöscht.');
 
-    // Kurse für Langgymi und Kurzgymi scrapen
     for (const entry of urls) {
       let page: Page | null = null;
       try {
@@ -331,7 +307,6 @@ async function scrapeNachhilfeAkademie(): Promise<void> {
         console.log(`\nLade: ${entry.url}`);
         await page.goto(entry.url, { waitUntil: 'networkidle2', timeout: 60000 });
 
-        
         const [wochenkurse, intensivkurse] = await Promise.all([
           scrapeWochenkurse(
             page,
@@ -346,7 +321,7 @@ async function scrapeNachhilfeAkademie(): Promise<void> {
             metadata.standorte,
             entry.url,
             entry.anmeldungUrl,
-            entry.intensivTableId   
+            entry.intensivTableId
           ),
         ]);
 
@@ -376,6 +351,15 @@ async function scrapeNachhilfeAkademie(): Promise<void> {
           });
           if (allCourses.length > 3) {
             console.log(`  ... und ${allCourses.length - 3} weitere Kurse`);
+          }
+
+          // NEU: Preisverlauf speichern — Durchschnittspreis aller Kurse dieses Typs
+          const coursesWithPrice = allCourses.filter(c => c.price_chf !== null);
+          if (coursesWithPrice.length > 0) {
+            const avgPrice = Math.round(
+              coursesWithPrice.reduce((sum: number, c: any) => sum + c.price_chf, 0) / coursesWithPrice.length
+            );
+            await recordPriceHistory(PROVIDER_ID, entry.course_type, avgPrice);
           }
         }
       } catch (error: any) {

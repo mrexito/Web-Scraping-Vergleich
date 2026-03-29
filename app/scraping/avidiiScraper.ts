@@ -1,11 +1,11 @@
 import 'dotenv/config';
 import puppeteer, { Browser, Page } from 'puppeteer';
 import { createClient } from '@supabase/supabase-js';
-import { startScrapeRun, finishScrapeRun, logScrapeError } from './scrapeUtils';
+import { startScrapeRun, finishScrapeRun, logScrapeError, recordPriceHistory } from './scrapeUtils';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
 const PROVIDER_ID = 3;
@@ -30,7 +30,6 @@ function parseDateDE(raw: string): string | null {
   return `${match[3]}-${month}-${match[1].padStart(2, '0')}`;
 }
 
-// Metadaten dynamisch von der Website scrapen
 async function scrapeProviderMetadata(page: Page, pageUrl: string): Promise<{
   einstufungstest: boolean;
   pruefungsarchiv: boolean;
@@ -57,12 +56,13 @@ async function scrapeProviderMetadata(page: Page, pageUrl: string): Promise<{
   });
 }
 
+// FIX: Gibt jetzt { courses, groupPrice } zurück statt nur courses
 async function scrapeCoursesFromPage(
   page: Page,
   pageUrl: string,
   courseType: string,
   runId: string
-) {
+): Promise<{ courses: any[]; groupPrice: number | null }> {
   const courses: any[] = [];
 
   await page.goto(pageUrl, { waitUntil: 'networkidle2', timeout: 60000 });
@@ -103,15 +103,12 @@ async function scrapeCoursesFromPage(
         const title = titleEl?.textContent?.toLowerCase() || '';
         const content = acc.querySelector('.accordion__content');
         if (!content) continue;
-        // innerHTML lesen (funktioniert auch bei eingeklappten Accordions)
-        // <br> Tags in Leerzeichen umwandeln, dann HTML entfernen
         const rawHtml = content.innerHTML || '';
         const cleanText = rawHtml
           .replace(/<br\s*\/?>/gi, ' ')
           .replace(/<[^>]+>/g, ' ')
           .replace(/&nbsp;/g, ' ');
         let allDates: string[] = [];
-        // Regex sucht alle Datumsmuster: "27. August 2025"
         const dateRegex = /\d{1,2}\.\s+\w+\s+\d{4}/g;
         let m;
         while ((m = dateRegex.exec(cleanText)) !== null) {
@@ -139,7 +136,7 @@ async function scrapeCoursesFromPage(
   } catch (e) {
     console.warn('  Warnung: Kurstabelle nicht gefunden.');
     await logScrapeError(runId, PROVIDER_ID, 'NO_COURSES_FOUND', `Kurstabelle nicht gefunden auf ${pageUrl}`);
-    return courses;
+    return { courses, groupPrice };
   }
 
   const rows = await page.evaluate((args: { pageUrl: string; courseType: string }) => {
@@ -175,7 +172,7 @@ async function scrapeCoursesFromPage(
       const isEinzelkurs = gruppe.toLowerCase().includes('einzel');
       const occurrence = weekday && uhrzeit ? `${weekday}, ${uhrzeit}` : weekday;
 
-          results.push({
+      results.push({
         gruppe,
         location: location || 'Zürich Stadelhofen',
         weekday: weekday.trim().toLowerCase(),
@@ -221,7 +218,7 @@ async function scrapeCoursesFromPage(
   }
 
   console.log(`  -> ${courses.length} Kurs(e) gefunden auf ${pageUrl}`);
-  return courses;
+  return { courses, groupPrice };  // FIX: beide zurückgeben
 }
 
 async function scrapeAvidii(): Promise<void> {
@@ -285,7 +282,9 @@ async function scrapeAvidii(): Promise<void> {
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
         console.log(`\nLade: ${entry.url}`);
-        const courses = await scrapeCoursesFromPage(page, entry.url, entry.course_type, runId);
+
+        // FIX: Destrukturierung da Funktion jetzt { courses, groupPrice } zurückgibt
+        const { courses, groupPrice } = await scrapeCoursesFromPage(page, entry.url, entry.course_type, runId);
 
         if (courses.length === 0) {
           await logScrapeError(runId, PROVIDER_ID, 'NO_COURSES_FOUND', `Keine Kurse gefunden auf ${entry.url}`);
@@ -302,6 +301,11 @@ async function scrapeAvidii(): Promise<void> {
             console.log(`  -> "${c.title.substring(0, 50)}" | CHF ${c.price_chf ?? 'N/A'} | ${c.verfuegbarkeit ?? 'N/A'}`);
           });
           if (courses.length > 3) console.log(`  ... und ${courses.length - 3} weitere Kurse`);
+
+          // NEU: Preisverlauf speichern (nur wenn Preis vorhanden)
+          if (groupPrice !== null) {
+            await recordPriceHistory(PROVIDER_ID, entry.course_type, groupPrice);
+          }
         }
       } catch (err: any) {
         console.error(`Fehler beim Scraping von ${entry.url}:`, err.message);

@@ -2,6 +2,7 @@ import UtilityAnalysisInteraction from '../components/UtilityAnalysisInteraction
 import { createServerSupabaseClient } from '@/utils/supabase/server';
 import { parseGymiProviders } from '@/schemas/gymiProviderSchema';
 import { parseCourseDetails } from '@/schemas/courseDetailSchema';
+import { parseCourses } from '@/schemas/courseSchema';
 import { transformProviders } from '@/utils/transformProviders';
 
 const UtilityAnalysis = async () => {
@@ -37,8 +38,9 @@ const UtilityAnalysis = async () => {
     supabase
       .from('courses')
       .select(
-        `provider_id, price_chf, course_type, location,
-         occurrence, start_date, verfuegbarkeit, is_online, course_url`
+        `provider_id, price_chf, price_regular_chf, discount_valid_until,
+         course_type, location, occurrence, start_date,
+         verfuegbarkeit, is_online, course_url`
       ),
   ]);
 
@@ -48,7 +50,8 @@ const UtilityAnalysis = async () => {
 
   const validProviders = parseGymiProviders(rawProviders ?? []);
   const validCourseDetails = parseCourseDetails(rawCourseDetails ?? []);
-  const transformedProviders = transformProviders(validProviders, rawCourses ?? [], validCourseDetails);
+  const validCourses = parseCourses(rawCourses ?? []);  // NEU: Zod-Validierung für courses
+  const transformedProviders = transformProviders(validProviders, validCourses, validCourseDetails);
 
   return (
     <div className="container mx-auto px-4 sm:px-8">

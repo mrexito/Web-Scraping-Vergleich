@@ -6,7 +6,8 @@
     "start": "next start",
     "test": "jest",
     "clear_jest": "jest --clearCache",
-    "generate": "npx supabase gen types --lang=typescript --project-id huxheggwzhfswlqsacag --schema public > database.types.ts"
+    "generate": "npx supabase gen types --lang=typescript --project-id huxheggwzhfswlqsacag --schema public > database.types.ts",
+    "scrape:all": "ts-node -r tsconfig-paths/register app/scraping/avidiiScraper.ts && ts-node -r tsconfig-paths/register app/scraping/gymivorbereitungZuerichScraper.ts && ts-node -r tsconfig-paths/register app/scraping/learningCultureScraper.ts && ts-node -r tsconfig-paths/register app/scraping/lernForumScraper.ts && ts-node -r tsconfig-paths/register app/scraping/nachhilfeAkademieScraper.ts"
   },
   "dependencies": {
     "@flaticon/flaticon-uicons": "^3.3.1",

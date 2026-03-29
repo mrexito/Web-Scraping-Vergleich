@@ -74,6 +74,7 @@ export type Database = {
         Row: {
           course_type: string | null
           course_url: string | null
+          discount_valid_until: string | null
           duration_weeks: number | null
           end_date: string | null
           has_digital_material: boolean | null
@@ -83,6 +84,7 @@ export type Database = {
           location: string | null
           occurrence: string | null
           price_chf: number | null
+          price_regular_chf: number | null
           provider_id: number | null
           scraped_data_raw: Json | null
           start_date: string | null
@@ -92,6 +94,7 @@ export type Database = {
         Insert: {
           course_type?: string | null
           course_url?: string | null
+          discount_valid_until?: string | null
           duration_weeks?: number | null
           end_date?: string | null
           has_digital_material?: boolean | null
@@ -101,6 +104,7 @@ export type Database = {
           location?: string | null
           occurrence?: string | null
           price_chf?: number | null
+          price_regular_chf?: number | null
           provider_id?: number | null
           scraped_data_raw?: Json | null
           start_date?: string | null
@@ -110,6 +114,7 @@ export type Database = {
         Update: {
           course_type?: string | null
           course_url?: string | null
+          discount_valid_until?: string | null
           duration_weeks?: number | null
           end_date?: string | null
           has_digital_material?: boolean | null
@@ -119,6 +124,7 @@ export type Database = {
           location?: string | null
           occurrence?: string | null
           price_chf?: number | null
+          price_regular_chf?: number | null
           provider_id?: number | null
           scraped_data_raw?: Json | null
           start_date?: string | null
