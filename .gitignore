@@ -51,3 +51,6 @@ next-env.d.ts
 
 # OneNote
 *.onetoc2
+
+# Python virtual environment
+app/scraping/scrapeGraphAi/venv/
