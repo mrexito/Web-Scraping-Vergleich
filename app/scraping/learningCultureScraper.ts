@@ -78,7 +78,7 @@ async function scrapeCoursesFromPage(
   for (const tabId of tabIds) {
     try {
       await page.click(`.tab-list-item a[href="#${tabId}"]`);
-      await new Promise((resolve) => setTimeout(resolve, 600));
+      await page.waitForSelector('.div-table-row', { timeout: 5000 });
       console.log(`  Tab "${tabId}" geöffnet`);
     } catch (e) {
       console.warn(`  Konnte Tab "${tabId}" nicht anklicken`);

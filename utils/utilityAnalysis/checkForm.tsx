@@ -1,19 +1,20 @@
-export const checkForm = (params: any) => {
+import type { ScoringParam } from '@/store/scoringStore';
+
+export const checkForm = (params: ScoringParam[]): true | string => {
   const allAttributesSet = params.every(
-    (param: { criteria: string; weight: number }) =>
-      param.criteria !== '' && param.weight !== undefined
+    (param) => param.criteria !== '' && param.weight !== undefined
   );
   const correctType = params.every(
-    (param: { weight: string }) => !isNaN(Number(param.weight))
+    (param) => !isNaN(Number(param.weight))
   );
   const correctSumOfWeights =
     params.reduce(
-      (sum: number, param: { weight: string }) => sum + Number(param.weight),
+      (sum, param) => sum + Number(param.weight),
       0
     ) === 100;
   const doubleCriteria = !params.every(
-    (param: { criteria: string }) =>
-      params.filter((p: { criteria: string }) => p.criteria === param.criteria).length === 1
+    (param) =>
+      params.filter((p) => p.criteria === param.criteria).length === 1
   );
 
   if (allAttributesSet && correctType && correctSumOfWeights && !doubleCriteria) {

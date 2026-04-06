@@ -88,7 +88,7 @@ def convert_date(raw: str) -> str | None:
     parts = raw.strip().split('.')
     if len(parts) != 3:
         return None
-    return f"{parts[2]}-{parts[1].padStart(2, '0')}-{parts[0].padStart(2, '0')}"
+    return f"{parts[2]}-{parts[1].zfill(2)}-{parts[0].zfill(2)}"
 
 
 def convert_date_py(raw: str) -> str | None:

@@ -49,11 +49,11 @@ export default function UtilityAnalysisInteraction({ GymiProviders, CourseDetail
     reset,
   } = useScoringStore();
 
-  // NEU: Kriterien müssen nicht mehr manuell gesetzt werden — initialParams im Store erledigt das
+
   useEffect(() => {
     setProviders(GymiProviders);
     setCourseDetails(CourseDetails);
-  }, []);
+  }, [GymiProviders, CourseDetails]);
 
   const handleCalculate = () => {
     const result = calculate();
