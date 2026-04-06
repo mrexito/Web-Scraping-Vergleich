@@ -3,12 +3,16 @@ import time
 import re
 import os
 from supabase import create_client
+from dotenv import load_dotenv
 
-# KONFIGURATION — hier deine Keys eintragen
-BRIGHT_DATA_API_TOKEN = "e528d843-2cd5-4e10-b012-451c6fac02a8"  
-COLLECTOR_ID = "c_mnbxlqtt1hmzxtsf4g"
-SUPABASE_URL = "https://huxheggwzhfswlqsacag.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh1eGhlZ2d3emhmc3dscXNhY2FnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MjIxNjY0MSwiZXhwIjoyMDg3NzkyNjQxfQ.EojZO40Z_1RFhx2CZoNarSGzMu_kW2v9yniJUKdidWM"
+load_dotenv()
+
+# Konfiguration
+BRIGHT_DATA_API_TOKEN = os.getenv("BRIGHT_DATA_API_TOKEN")
+COLLECTOR_ID = os.getenv("BRIGHT_DATA_COLLECTOR_ID_GYMIZH")
+SUPABASE_URL = os.getenv("NEXT_PUBLIC_SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
 
 PROVIDER_ID = 13  # Gymivorbereitung Zürich
 

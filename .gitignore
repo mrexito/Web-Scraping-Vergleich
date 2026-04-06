@@ -53,4 +53,5 @@ next-env.d.ts
 *.onetoc2
 
 # Python virtual environment
-app/scraping/scrapeGraphAi/venv/
+**/venv/
+
