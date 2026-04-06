@@ -2,6 +2,8 @@
 import React, { useState } from "react";
 import type { CourseDetail } from "@/schemas/courseDetailSchema";
 
+const NACHHILFE_AKADEMIE_ID = 6;
+
 export interface RatedGymiProviders {
     id: number;
     provider: string;
@@ -60,7 +62,6 @@ const verfuegbarkeitBadge = (val?: string | null) => {
     );
 };
 
-// Tooltip-Komponente für Hinweis beim Preis
 const PriceInfoTooltip = () => {
     const [visible, setVisible] = useState(false);
     return (
@@ -92,8 +93,6 @@ const PriceInfoTooltip = () => {
     );
 };
 
-// Preistabelle für NA Modal — alle drei Preiskategorien (Privat / 2er / 4er)
-// Struktur: Kurstyp als Zeilengruppe, Preiskategorie als Spalte
 const NachhilfeAkademiePreisHinweis = ({ kurstyp }: { kurstyp?: 'langgymi' | 'kurzgymi' }) => {
     const thStyle: React.CSSProperties = {
         textAlign: 'left',
@@ -102,14 +101,6 @@ const NachhilfeAkademiePreisHinweis = ({ kurstyp }: { kurstyp?: 'langgymi' | 'ku
         color: 'var(--color-text-secondary)',
         fontWeight: 600,
         fontSize: '11px',
-        whiteSpace: 'nowrap',
-    };
-    const tdLabel: React.CSSProperties = {
-        padding: '5px 6px',
-        fontWeight: 500,
-        fontSize: '11px',
-        color: 'var(--color-text-secondary)',
-        borderBottom: '1px solid var(--color-border, #e5e7eb)',
         whiteSpace: 'nowrap',
     };
     const td: React.CSSProperties = {
@@ -143,7 +134,6 @@ const NachhilfeAkademiePreisHinweis = ({ kurstyp }: { kurstyp?: 'langgymi' | 'ku
                         </tr>
                     </thead>
                     <tbody>
-                        {/* Wochenkurse */}
                         <tr>
                             <td style={sectionHeader} rowSpan={4}>Wochenkurs<br /><span style={{ fontWeight: 400, color: 'var(--color-text-secondary)' }}>pro Fach, Aug–März</span></td>
                             <td style={td}>Deutsch Grammatik</td>
@@ -169,9 +159,8 @@ const NachhilfeAkademiePreisHinweis = ({ kurstyp }: { kurstyp?: 'langgymi' | 'ku
                             <td style={td}>CHF 2'156</td>
                             <td style={td}>CHF 1'628</td>
                         </tr>
-                        {/* Intensivkurse */}
                         <tr>
-                            <td style={{ ...sectionHeader, borderBottom: 'none' }} rowSpan={kurstyp === 'kurzgymi' ? 3 : 3}>
+                            <td style={{ ...sectionHeader, borderBottom: 'none' }} rowSpan={3}>
                                 Intensivkurs<br /><span style={{ fontWeight: 400, color: 'var(--color-text-secondary)' }}>Gesamtpaket, 1 Woche</span>
                             </td>
                             <td style={td}>Herbstferien 1</td>
@@ -226,8 +215,6 @@ const GymiProviderOverview = ({ gymiProviders, courseDetails }: GymiProviderOver
             console.error('CourseDetail nicht gefunden für:', selected.id);
             return;
         }
-        // courseDetail zuerst spreaden, dann selected — so überschreibt der dynamische
-        // Unterrichttag aus RatedGymiProviders den statischen aus CourseDetail
         setSelectedProvider({ ...courseDetail, ...selected });
         setShowModal(state);
     };
@@ -250,9 +237,9 @@ const GymiProviderOverview = ({ gymiProviders, courseDetails }: GymiProviderOver
                 <h1 className="text-3xl flex mt-7">Gymi-Vorbereitungskurs Anbieter</h1>
                 <div className="container my-12 mx-auto">
                     <p className="text-sm text-gray-600 mb-4">
-                    ⚠️ Die angezeigten Preise dienen als Orientierung und sind je nach Anbieter unterschiedlich definiert (Gesamtpaket, pro Fach, Gruppen- oder Einzelpreis). Details sind im jeweiligen Anbieter-Modal ersichtlich.
-                </p>
-                <div className="flex flex-wrap -mx-1 lg:-mx-4">
+                        ⚠️ Die angezeigten Preise dienen als Orientierung und sind je nach Anbieter unterschiedlich definiert (Gesamtpaket, pro Fach, Gruppen- oder Einzelpreis). Details sind im jeweiligen Anbieter-Modal ersichtlich.
+                    </p>
+                    <div className="flex flex-wrap -mx-1 lg:-mx-4">
                         {gymiProviders && gymiProviders.map((provider) => {
                             const courseDetail = courseDetails.find((detail) => detail.ID === provider.id);
                             const cardVerfuegbarkeit = provider.kurstyp === 'langgymi'
@@ -277,13 +264,11 @@ const GymiProviderOverview = ({ gymiProviders, courseDetails }: GymiProviderOver
                                                                 ? provider.rawPrice
                                                                 : 'CHF ' + provider.rawPrice)
                                                             : 'Nicht verfügbar'}
-                                                        {/* Tooltip nur für Nachhilfe Akademie (ID 6) wegen spezieller Preisstruktur */}
-                                                        {provider.id === 6 && <PriceInfoTooltip />}
+                                                        {provider.id === NACHHILFE_AKADEMIE_ID && <PriceInfoTooltip />}
                                                     </p>
                                                 </div>
                                                 <div style={{ background: 'var(--color-background-secondary)', borderRadius: '8px', padding: '10px 12px' }}>
                                                     <p style={{ fontSize: '12px', color: 'var(--color-text-secondary)', margin: '0 0 2px' }}>Unterrichtstag</p>
-                                                    {/* Dynamischer Wert aus courses-Tabelle hat Priorität über statischen CourseDetail-Wert */}
                                                     <p style={{ fontSize: '13px', fontWeight: 500, margin: 0 }}>
                                                         {provider.Unterrichttag || courseDetail?.Unterrichttag || 'Nicht verfügbar'}
                                                     </p>
@@ -355,15 +340,14 @@ const GymiProviderOverview = ({ gymiProviders, courseDetails }: GymiProviderOver
                                             <p style={{ fontSize: '13px', fontWeight: 500, margin: 0 }}>{qualitaetLabel(selectedProvider.Qualitaetsbewertung)}</p>
                                         </div>
                                         <div style={{ background: 'var(--color-background-secondary)', borderRadius: '8px', padding: '10px 12px' }}>
-                                                <p style={{ fontSize: '12px', color: 'var(--color-text-secondary)', margin: '0 0 4px' }}>Verfügbarkeit</p>
-                                                {verfuegbarkeit
-                                                    ? verfuegbarkeitBadge(verfuegbarkeit)
-                                                    : <span style={{ background: '#EEF0F5', color: '#4A5270', fontSize: '11px', padding: '2px 8px', borderRadius: '20px', fontStyle: 'italic' }}>Nicht publiziert</span>}
-                                            </div>
+                                            <p style={{ fontSize: '12px', color: 'var(--color-text-secondary)', margin: '0 0 4px' }}>Verfügbarkeit</p>
+                                            {verfuegbarkeit
+                                                ? verfuegbarkeitBadge(verfuegbarkeit)
+                                                : <span style={{ background: '#EEF0F5', color: '#4A5270', fontSize: '11px', padding: '2px 8px', borderRadius: '20px', fontStyle: 'italic' }}>Nicht publiziert</span>}
+                                        </div>
                                     </div>
 
-                                    {/* Preisstruktur-Tabelle nur für Nachhilfe Akademie (ID 6) */}
-                                    {selectedProvider.id === 6 && (
+                                    {selectedProvider.id === NACHHILFE_AKADEMIE_ID && (
                                         <NachhilfeAkademiePreisHinweis kurstyp={selectedProvider.kurstyp} />
                                     )}
 
