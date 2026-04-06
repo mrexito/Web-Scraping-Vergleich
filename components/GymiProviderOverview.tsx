@@ -1,5 +1,5 @@
 'use client';
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import type { CourseDetail } from "@/schemas/courseDetailSchema";
 
 const NACHHILFE_AKADEMIE_ID = 6;
@@ -204,6 +204,19 @@ const GymiProviderOverview = ({ gymiProviders, courseDetails }: GymiProviderOver
     const [showModal, setShowModal] = useState(false);
     const [selectedProvider, setSelectedProvider] = useState<SelectedProvider>();
 
+    // Escape-Taste schliesst das Modal
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setShowModal(false);
+        };
+        if (showModal) {
+            document.addEventListener('keydown', handleKeyDown);
+        }
+        return () => {
+            document.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [showModal]);
+
     const toggleModal = (providerId: number, state: boolean) => {
         const selected = gymiProviders.find((p) => p.id === providerId);
         if (!selected) {
@@ -306,15 +319,21 @@ const GymiProviderOverview = ({ gymiProviders, courseDetails }: GymiProviderOver
 
             {showModal && selectedProvider && (
                 <div>
-                    <div className="justify-center items-center flex overflow-x-hidden overflow-y-auto fixed inset-0 z-50 outline-none focus:outline-none">
+                    <div
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="modal-title"
+                        className="justify-center items-center flex overflow-x-hidden overflow-y-auto fixed inset-0 z-50 outline-none focus:outline-none"
+                    >
                         <div className="relative w-auto my-6 mx-auto max-w-2xl w-full">
                             <div className="border-0 rounded-lg shadow-lg relative flex flex-col w-full bg-white outline-none focus:outline-none">
 
                                 <div className="flex items-center justify-between p-5 border-b border-solid rounded-t">
-                                    <h3 className="text-xl font-semibold">{selectedProvider.provider}</h3>
+                                    <h3 id="modal-title" className="text-xl font-semibold">{selectedProvider.provider}</h3>
                                     <button
                                         className="p-1 ml-auto bg-transparent border-0 text-black text-3xl leading-none font-semibold outline-none focus:outline-none"
                                         onClick={() => setShowModal(false)}
+                                        aria-label="Modal schliessen"
                                     >
                                         <span className="text-black h-6 w-6 text-2xl block outline-none focus:outline-none">x</span>
                                     </button>
