@@ -13,14 +13,13 @@
     "noEmit": false,
     "esModuleInterop": true,
     "module": "CommonJS",
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "preserve",
     "incremental": true,
     "outDir": "./dist",
     "rootDir": "./",
-    "baseUrl": ".", //Basis für Pfadauslösung
     "plugins": [
       {
         "name": "next"
