@@ -168,16 +168,17 @@ async function scrapeWochenkurse(
   for (const row of rows) {
     if (!row || !row.fach) continue;
     courses.push({
-      provider_id: PROVIDER_ID,
-      title: `Wöchentlicher Kurs – ${row.fach} (${row.lektionenProWoche})`,
-      price_chf: parseChfPrice(row.kosten4er),
-      location: standorte,
-      occurrence: row.lektionenProWoche,
-      course_type: courseType,
-      course_url: anmeldungUrl,
-      is_online: false,
-      verfuegbarkeit: null,
-      last_scraped_at: new Date().toISOString(),
+      provider_id:      PROVIDER_ID,
+      title:            `Wöchentlicher Kurs – ${row.fach} (${row.lektionenProWoche})`,
+      price_chf:        parseChfPrice(row.kosten4er),
+      location:         standorte,
+      occurrence:       row.lektionenProWoche,
+      course_type:      courseType,
+      course_url:       anmeldungUrl,
+      is_online:        false,
+      verfuegbarkeit:   null,
+      last_scraped_at:  new Date().toISOString(),
+      scraper_method:   'puppeteer',  // ← neu
     });
   }
 
@@ -222,18 +223,19 @@ async function scrapeIntensivkurse(
     if (!row || !row.name) continue;
     const { start, end } = parseDateRange(row.datum);
     courses.push({
-      provider_id: PROVIDER_ID,
-      title: `Intensivkurs ${row.name} – ${row.lektionen}`,
-      price_chf: parseChfPrice(row.kostenGruppe),
-      location: standorte,
-      occurrence: row.datum,
-      course_type: courseType,
-      course_url: anmeldungUrl,
-      start_date: start,
-      end_date: end,
-      is_online: false,
-      verfuegbarkeit: null,
+      provider_id:     PROVIDER_ID,
+      title:           `Intensivkurs ${row.name} – ${row.lektionen}`,
+      price_chf:       parseChfPrice(row.kostenGruppe),
+      location:        standorte,
+      occurrence:      row.datum,
+      course_type:     courseType,
+      course_url:      anmeldungUrl,
+      start_date:      start,
+      end_date:        end,
+      is_online:       false,
+      verfuegbarkeit:  null,
       last_scraped_at: new Date().toISOString(),
+      scraper_method:  'puppeteer',
     });
   }
 
@@ -295,7 +297,10 @@ async function scrapeNachhilfeAkademie(): Promise<void> {
       console.log('✓ CourseDetails Metadaten aktualisiert');
     }
 
-    await supabase.from('courses').delete().eq('provider_id', PROVIDER_ID);
+    // Alte Kurse löschen (nur puppeteer-Kurse)
+    await supabase.from('courses').delete()
+      .eq('provider_id', PROVIDER_ID)
+      .eq('scraper_method', 'puppeteer');
     console.log('Alte Kurse gelöscht.');
 
     for (const entry of urls) {
@@ -353,7 +358,6 @@ async function scrapeNachhilfeAkademie(): Promise<void> {
             console.log(`  ... und ${allCourses.length - 3} weitere Kurse`);
           }
 
-          // NEU: Preisverlauf speichern — Durchschnittspreis aller Kurse dieses Typs
           const coursesWithPrice = allCourses.filter(c => c.price_chf !== null);
           if (coursesWithPrice.length > 0) {
             const avgPrice = Math.round(

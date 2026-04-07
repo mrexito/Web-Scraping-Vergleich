@@ -21,6 +21,21 @@ const Sidebar = ({ isOpen, toggle }: { isOpen: boolean; toggle: () => void }): J
               <p>Nutzwertanalyse</p>
             </Link>
           </li>
+          <li>
+            <Link href="/zap-info" onClick={toggle}>
+              <p>ZAP-Info</p>
+            </Link>
+          </li>
+          <li>
+            <Link href="/about" onClick={toggle}>
+              <p>Über uns</p>
+            </Link>
+          </li>
+          <li>
+            <Link href="/contact" onClick={toggle}>
+              <p>Contact</p>
+            </Link>
+          </li>
         </ul>
       </div>
     </>

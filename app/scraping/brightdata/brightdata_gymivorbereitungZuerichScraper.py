@@ -13,8 +13,7 @@ COLLECTOR_ID = os.getenv("BRIGHT_DATA_COLLECTOR_ID_GYMIZH")
 SUPABASE_URL = os.getenv("NEXT_PUBLIC_SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
-
-PROVIDER_ID = 13  # Gymivorbereitung Zürich
+PROVIDER_ID = 1
 
 URLS = [
     {"url": "https://gymivorbereitung-zuerich.ch/langzeit/halbjahreskurs",  "course_type": "langgymi"},
@@ -24,7 +23,7 @@ URLS = [
 
 def trigger_scraper() -> str:
     """Startet den Bright Data Scraper und gibt die Job-ID zurück."""
-    print("Starte Bright Data Scraper...")
+    print("Starte Bright Data Gymivorbereitung Zürich Scraper...")
     response = requests.post(
         f"https://api.brightdata.com/dca/trigger?collector={COLLECTOR_ID}&queue_next=1",
         headers={
@@ -81,18 +80,8 @@ def parse_price(raw: str) -> int | None:
     return int(match.group()) if match else None
 
 
-def convert_date(raw: str) -> str | None:
-    """Konvertiert '29.08.2026' → '2026-08-29'."""
-    if not raw:
-        return None
-    parts = raw.strip().split('.')
-    if len(parts) != 3:
-        return None
-    return f"{parts[2]}-{parts[1].zfill(2)}-{parts[0].zfill(2)}"
-
-
 def convert_date_py(raw: str) -> str | None:
-    """Konvertiert '29.08.2026' → '2026-08-29' (Python-Version)."""
+    """Konvertiert '29.08.2026' → '2026-08-29'."""
     if not raw:
         return None
     parts = raw.strip().split('.')
@@ -105,24 +94,24 @@ def transform_courses(data: list) -> list:
     """Transformiert die Bright Data JSON-Daten in das Supabase-Format."""
     courses = []
     for result in data:
-        # Kurstyp aus der URL ableiten
         url = result.get("input", {}).get("url", "")
         course_type = "langgymi" if "langzeit" in url else "kurzgymi"
 
         for course in result.get("courses", []):
             courses.append({
-                "provider_id": PROVIDER_ID,
-                "title": f"{course.get('course_name', '')} | {course.get('weekday', '')}",
-                "price_chf": parse_price(course.get("price_chf")),
-                "location": course.get("location"),
-                "occurrence": course.get("weekday"),
-                "course_type": course_type,
-                "course_url": url,
-                "is_online": course.get("location", "").lower() == "online",
-                "verfuegbarkeit": clean_availability(course.get("availability_status", "")),
-                "start_date": convert_date_py(course.get("start_date")),
-                "end_date": convert_date_py(course.get("end_date")),
+                "provider_id":     PROVIDER_ID,
+                "title":           f"{course.get('course_name', '')} | {course.get('weekday', '')}",
+                "price_chf":       parse_price(course.get("price_chf")),
+                "location":        course.get("location"),
+                "occurrence":      course.get("weekday"),
+                "course_type":     course_type,
+                "course_url":      url,
+                "is_online":       course.get("location", "").lower() == "online",
+                "verfuegbarkeit":  clean_availability(course.get("availability_status", "")),
+                "start_date":      convert_date_py(course.get("start_date")),
+                "end_date":        convert_date_py(course.get("end_date")),
                 "last_scraped_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "scraper_method":  "brightdata",
             })
     return courses
 
@@ -131,12 +120,15 @@ def save_to_supabase(courses: list) -> None:
     """Löscht alte Kurse und speichert neue in Supabase."""
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-    # Alte Kurse löschen
-    supabase.table("courses").delete().eq("provider_id", PROVIDER_ID).execute()
-    print(f"Alte Kurse gelöscht.")
+    # Nur eigene Kurse löschen (nicht die von anderen Scrapern)
+    supabase.table("courses").delete()\
+        .eq("provider_id", PROVIDER_ID)\
+        .eq("scraper_method", "brightdata")\
+        .execute()
+    print("Alte Kurse gelöscht.")
 
     # Neue Kurse einfügen
-    result = supabase.table("courses").insert(courses).execute()
+    supabase.table("courses").insert(courses).execute()
     print(f"✓ {len(courses)} Kurse gespeichert")
 
     # Preisverlauf speichern
@@ -147,7 +139,7 @@ def save_to_supabase(courses: list) -> None:
             supabase.table("price_history").insert({
                 "provider_id": PROVIDER_ID,
                 "course_type": course_type,
-                "price_chf": avg_price,
+                "price_chf":   avg_price,
                 "recorded_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             }).execute()
             print(f"✓ price_history: Provider {PROVIDER_ID} | {course_type} | CHF {avg_price}")
@@ -155,20 +147,12 @@ def save_to_supabase(courses: list) -> None:
 
 def main():
     try:
-        # Scraper starten
         job_id = trigger_scraper()
-
-        # Warten bis Daten bereit sind
         raw_data = wait_for_results(job_id)
-
-        # Daten transformieren
         courses = transform_courses(raw_data)
         print(f"  {len(courses)} Kurse transformiert")
-
-        # In Supabase speichern
         save_to_supabase(courses)
-
-        print("\nBright Data Scraping abgeschlossen!")
+        print("\nBright Data Gymivorbereitung Zürich Scraping abgeschlossen!")
 
     except Exception as e:
         print(f"Fehler: {e}")

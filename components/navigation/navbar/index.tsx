@@ -17,9 +17,18 @@ const Navbar = ({ toggle }: { toggle: () => void }) => {
                 <path fill="#313638" d="M3 6h18v2H3V6m0 5h18v2H3v-2m0 5h18v2H3v-2Z" />
               </svg>
             </button>
-            <ul className="hidden md:flex gap-x-20 text-cr-darkgrey">
+            <ul className="hidden md:flex gap-x-10 text-cr-darkgrey">
               <li>
                 <Link href="/">Nutzwertanalyse</Link>
+              </li>
+              <li>
+                <Link href="/zap-info">ZAP-Info</Link>
+              </li>
+              <li>
+                <Link href="/about">Über uns</Link>
+              </li>
+              <li>
+                <Link href="/contact">Contact</Link>
               </li>
             </ul>
           </div>

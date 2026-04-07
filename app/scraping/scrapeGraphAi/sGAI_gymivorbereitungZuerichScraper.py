@@ -2,17 +2,18 @@ import os
 import re
 import json
 import time
+from openai import OpenAI
+from langchain_openai import ChatOpenAI
 from dotenv import load_dotenv
 from supabase import create_client
-from openai import OpenAI
-from playwright.sync_api import sync_playwright
+from scrapegraphai.graphs import SmartScraperGraph
 
-load_dotenv()
+load_dotenv("../../../.env")
 
 # Konfiguration
-SUPABASE_URL  = os.getenv("SUPABASE_URL")
-SUPABASE_KEY  = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-BFH_API_KEY   = os.getenv("BFH_LLM_API_KEY")
+SUPABASE_URL = os.getenv("NEXT_PUBLIC_SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+BFH_API_KEY  = os.getenv("BFH_LLM_API_KEY")
 
 PROVIDER_ID   = 1
 PROVIDER_NAME = "Gymivorbereitung Zuerich"
@@ -30,11 +31,47 @@ URLS = [
     },
 ]
 
-# BFH LLM Client (direkt via OpenAI-kompatibler API)
-llm_client = OpenAI(
+# LangChain Instanz für BFH LLM
+llm_instance = ChatOpenAI(
+    model="gpt-oss:120b",
     api_key=BFH_API_KEY,
     base_url="https://inference.mlmp.ti.bfh.ch/api/v1",
 )
+
+# ScrapeGraphAI Konfiguration
+graph_config = {
+    "llm": {
+        "model_instance": llm_instance,
+        "model_tokens": 32000,
+    },
+    "verbose": True,
+    "headless": True,
+}
+
+PROMPT = """
+Du bist ein Datenextraktions-Assistent. Extrahiere alle Kurszeilen aus dieser Webseite.
+
+Für jeden Kurs gib folgende Felder zurück:
+- course_name: Name des Kurses (z.B. "Halbjahreskurs")
+- weekday: Wochentag und Uhrzeit (z.B. "Mittwoch, 14:00-17:30")
+- location: Kursort (z.B. "Zürich HB", "Online", "Winterthur")
+- start_date: Startdatum im Format TT.MM.JJJJ (z.B. "29.08.2026")
+- price_chf: Preis in CHF als Zahl (z.B. 3290)
+- price_regular_chf: Regulärpreis in CHF falls Frühbucherrabatt vorhanden (z.B. 3490)
+- discount_valid_until: Monat bis wann Frühbucherrabatt gilt (z.B. "Mai")
+- availability: Verfügbarkeitsstatus (z.B. "Freie Plätze", "Wenige Plätze", "Ausgebucht")
+- is_online: true wenn Kurs online stattfindet, sonst false
+
+Gib auch folgende Anbieter-Metadaten zurück:
+- aufsatzkorrektur: true/false
+- einstufungstest: true/false
+- e_learning: true/false
+- pruefungsarchiv: true/false
+- beratungsgespraech: true/false
+- lernunterlagen: true/false
+
+Antworte NUR mit einem JSON-Objekt mit den Feldern "courses" (Liste) und "metadata" (Objekt).
+"""
 
 # Hilfsfunktionen
 def clean_availability(raw: str) -> str | None:
@@ -58,7 +95,6 @@ def parse_price(raw) -> int | None:
 
 
 def convert_date(raw: str) -> str | None:
-    """Konvertiert '29.08.2026' → '2026-08-29'."""
     if not raw:
         return None
     parts = raw.strip().split(".")
@@ -68,7 +104,6 @@ def convert_date(raw: str) -> str | None:
 
 
 def convert_discount_date(raw: str) -> str | None:
-    """Konvertiert Monatsname wie 'Juni' → '2026-06-30'."""
     if not raw:
         return None
     MONTHS = {
@@ -83,89 +118,48 @@ def convert_discount_date(raw: str) -> str | None:
     return None
 
 
-def extract_json(text: str) -> dict:
-    """Extrahiert JSON aus dem BFH LLM Output — auch bei <|channel|> Prefix."""
-    match = re.search(r'\{.*\}', text, re.DOTALL)
-    if match:
-        try:
-            return json.loads(match.group())
-        except Exception as e:
-            print(f"  Fehler beim JSON-Parsen: {e}")
-    return {}
+def test_bfh_connection() -> bool:
+    print("  Teste BFH LLM Verbindung...")
+    try:
+        client = OpenAI(
+            base_url="https://inference.mlmp.ti.bfh.ch/api/v1",
+            api_key=BFH_API_KEY,
+        )
+        response = client.chat.completions.create(
+            model="gpt-oss:120b",
+            messages=[{"role": "user", "content": "Antworte nur mit: OK"}],
+        )
+        answer = response.choices[0].message.content.strip()
+        print(f"  ✓ BFH LLM erreichbar: {answer}")
+        return True
+    except Exception as e:
+        print(f"  ✗ BFH LLM Verbindungsfehler: {e}")
+        return False
 
 
-# Playwright: Seite rendern
-def fetch_page_html(url: str) -> str:
-    """Öffnet die Seite mit Playwright und gibt den gerenderten Text zurück."""
-    print(f"  Lade Seite mit Playwright: {url}")
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
-        page.goto(url, wait_until="networkidle", timeout=60000)
-        content = page.inner_text("body")
-        browser.close()
-    print(f"  -> Seite geladen ({len(content)} Zeichen)")
-    return content
+def scrape_courses(entry: dict) -> dict:
+    print(f"\n  ScrapeGraphAI scrapt: {entry['url']} ({entry['course_type']})")
 
-
-# BFH LLM: Daten extrahieren
-def extract_with_llm(page_text: str) -> dict:
-    """Sendet den Seitentext direkt ans BFH LLM und extrahiert strukturierte Daten."""
-    truncated = page_text[:12000]
-
-    prompt = f"""
-Du bist ein Datenextraktions-Assistent. Extrahiere alle Kurszeilen aus dem folgenden Webseitentext.
-
-Für jeden Kurs gib folgende Felder zurück:
-- course_name: Name des Kurses (z.B. "Halbjahreskurs")
-- weekday: Wochentag und Uhrzeit (z.B. "Mittwoch, 14:00-17:30")
-- location: Kursort (z.B. "Zürich HB", "Online", "Winterthur")
-- start_date: Startdatum im Format TT.MM.JJJJ (z.B. "29.08.2026")
-- price_chf: Preis in CHF als Zahl (z.B. 3290)
-- price_regular_chf: Regulärpreis in CHF falls Frühbucherrabatt vorhanden (z.B. 3490)
-- discount_valid_until: Monat bis wann Frühbucherrabatt gilt (z.B. "Mai")
-- availability: Verfügbarkeitsstatus (z.B. "Freie Plätze", "Wenige Plätze", "Ausgebucht")
-- is_online: true wenn Kurs online stattfindet, sonst false
-- max_teilnehmer: Maximale Teilnehmerzahl falls angegeben (z.B. "8-14")
-
-Gib auch folgende Anbieter-Metadaten zurück:
-- aufsatzkorrektur: true/false
-- einstufungstest: true/false
-- e_learning: true/false (Online-Lernplattform vorhanden)
-- pruefungsarchiv: true/false
-- beratungsgespraech: true/false
-- lernunterlagen: true/false (eigene Kursmaterialien)
-
-Antworte NUR mit einem JSON-Objekt mit den Feldern "courses" (Liste) und "metadata" (Objekt).
-Kein erklärender Text, nur das JSON.
-
-Webseitentext:
-{truncated}
-"""
-
-    response = llm_client.chat.completions.create(
-        model="gpt-oss:120b",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0,
+    scraper = SmartScraperGraph(
+        prompt=PROMPT,
+        source=entry["url"],
+        config=graph_config,
     )
 
-    raw_text = response.choices[0].message.content
-    print(f"  -> LLM Antwort erhalten ({len(raw_text)} Zeichen)")
-    return extract_json(raw_text)
+    result = scraper.run()
+    print(f"  -> Resultat erhalten: {type(result)}")
 
+    if isinstance(result, str):
+        try:
+            result = json.loads(result.strip().strip("```json").strip("```"))
+        except json.JSONDecodeError as e:
+            print(f"  Warnung: JSON-Parsing fehlgeschlagen: {e}")
+            return {}
 
-# Scraping
-def scrape_courses(entry: dict) -> dict:
-    """Lädt die Seite mit Playwright und extrahiert Daten mit dem BFH LLM."""
-    print(f"\n  Scrape: {entry['url']} ({entry['course_type']})")
-    page_text = fetch_page_html(entry["url"])
-    result    = extract_with_llm(page_text)
-    print(f"  -> Rohresultat: {result}")
-    return result
+    return result if isinstance(result, dict) else {}
 
 
 def transform_courses(result: dict, entry: dict) -> list:
-    """Transformiert das geparste Resultat ins Supabase-Format."""
     courses = []
 
     raw_courses = result.get("courses", [])
@@ -198,6 +192,7 @@ def transform_courses(result: dict, entry: dict) -> list:
             "is_online":            is_online,
             "verfuegbarkeit":       clean_availability(course.get("availability") or ""),
             "last_scraped_at":      time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "scraper_method":       "scrapegraphai",
         })
 
     print(f"  -> {len(courses)} Kurs(e) transformiert")
@@ -205,7 +200,6 @@ def transform_courses(result: dict, entry: dict) -> list:
 
 
 def save_metadata(supabase, metadata: dict) -> None:
-    """Aktualisiert GymiProviders und CourseDetails mit Metadaten."""
     if not metadata:
         return
 
@@ -225,8 +219,11 @@ def save_metadata(supabase, metadata: dict) -> None:
 
 
 def save_to_supabase(supabase, courses: list) -> None:
-    """Löscht alte Kurse und speichert neue in Supabase."""
-    supabase.table("courses").delete().eq("provider_id", PROVIDER_ID).execute()
+    """Löscht nur eigene Kurse und speichert neue in Supabase."""
+    supabase.table("courses").delete()\
+        .eq("provider_id", PROVIDER_ID)\
+        .eq("scraper_method", "scrapegraphai")\
+        .execute()
     print("  Alte Kurse gelöscht.")
 
     if courses:
@@ -246,10 +243,13 @@ def save_to_supabase(supabase, courses: list) -> None:
                 print(f"  ✓ price_history: {course_type} | CHF {avg_price}")
 
 
-# Main
 def main():
-    print(f"Starte {PROVIDER_NAME} Scraper (Playwright + BFH LLM direkt)...")
+    print(f"Starte {PROVIDER_NAME} Scraper (ScrapeGraphAI + BFH LLM)...")
     start_time = time.time()
+
+    if not test_bfh_connection():
+        print("  Abbruch: BFH LLM nicht erreichbar. VPN aktiv? API-Key korrekt?")
+        return
 
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 

@@ -56,7 +56,6 @@ async function scrapeProviderMetadata(page: Page, pageUrl: string): Promise<{
   });
 }
 
-// FIX: Gibt jetzt { courses, groupPrice } zurück statt nur courses
 async function scrapeCoursesFromPage(
   page: Page,
   pageUrl: string,
@@ -214,11 +213,12 @@ async function scrapeCoursesFromPage(
       is_online: false,
       verfuegbarkeit: row.verfuegbarkeit,
       last_scraped_at: new Date().toISOString(),
+      scraper_method: 'puppeteer',
     });
   }
 
   console.log(`  -> ${courses.length} Kurs(e) gefunden auf ${pageUrl}`);
-  return { courses, groupPrice };  // FIX: beide zurückgeben
+  return { courses, groupPrice };
 }
 
 async function scrapeAvidii(): Promise<void> {
@@ -270,8 +270,10 @@ async function scrapeAvidii(): Promise<void> {
       console.log('✓ CourseDetails Metadaten aktualisiert');
     }
 
-    // 2. Alte Kurse löschen
-    await supabase.from('courses').delete().eq('provider_id', PROVIDER_ID);
+    // 2. Alte Kurse löschen (nur puppeteer-Kurse)
+    await supabase.from('courses').delete()
+      .eq('provider_id', PROVIDER_ID)
+      .eq('scraper_method', 'puppeteer');
     console.log('Alte Kurse gelöscht.');
 
     // 3. Kurse scrapen
@@ -283,7 +285,6 @@ async function scrapeAvidii(): Promise<void> {
 
         console.log(`\nLade: ${entry.url}`);
 
-        // FIX: Destrukturierung da Funktion jetzt { courses, groupPrice } zurückgibt
         const { courses, groupPrice } = await scrapeCoursesFromPage(page, entry.url, entry.course_type, runId);
 
         if (courses.length === 0) {
@@ -302,7 +303,6 @@ async function scrapeAvidii(): Promise<void> {
           });
           if (courses.length > 3) console.log(`  ... und ${courses.length - 3} weitere Kurse`);
 
-          // NEU: Preisverlauf speichern (nur wenn Preis vorhanden)
           if (groupPrice !== null) {
             await recordPriceHistory(PROVIDER_ID, entry.course_type, groupPrice);
           }

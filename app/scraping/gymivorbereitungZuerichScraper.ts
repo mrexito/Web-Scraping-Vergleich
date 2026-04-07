@@ -264,6 +264,7 @@ async function scrapeCoursesFromPage(
       is_online: item.is_online,
       verfuegbarkeit: item.verfuegbarkeit,
       last_scraped_at: new Date().toISOString(),
+      scraper_method: 'puppeteer',
     });
   }
 
@@ -352,7 +353,10 @@ async function scrapeGymivorbereitungZuerich(): Promise<void> {
       console.log('✓ CourseDetails Metadaten aktualisiert');
     }
 
-    await supabase.from('courses').delete().eq('provider_id', PROVIDER_ID);
+    // Alte Kurse löschen (nur puppeteer-Kurse)
+    await supabase.from('courses').delete()
+      .eq('provider_id', PROVIDER_ID)
+      .eq('scraper_method', 'puppeteer');
     console.log('Alte Kurse gelöscht.');
 
     const allScrapedCourses: any[] = [];
@@ -404,7 +408,6 @@ async function scrapeGymivorbereitungZuerich(): Promise<void> {
 
           allScrapedCourses.push(...courses);
 
-          // NEU: Preisverlauf speichern (Frühbucherpreis)
           if (meta.preis !== null) {
             await recordPriceHistory(PROVIDER_ID, entry.course_type, meta.preis);
           }

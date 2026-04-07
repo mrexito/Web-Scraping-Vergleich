@@ -26,7 +26,6 @@ function parseDate(raw: string): string | null {
   return `${year}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
 }
 
-// Metadaten dynamisch von der Kursseite scrapen
 async function scrapeProviderMetadata(page: Page, pageUrl: string): Promise<{
   aufsatzkorrektur: boolean;
   simulationspruefung: boolean;
@@ -171,6 +170,7 @@ async function scrapeCoursesFromPage(
             course_type: courseType,
             course_url: pageUrl,
             verfuegbarkeit,
+            scraper_method: 'puppeteer',
           });
         }
 
@@ -256,7 +256,10 @@ async function scrapeLearningCulture(): Promise<void> {
       console.log('✓ CourseDetails Metadaten aktualisiert');
     }
 
-    await supabase.from('courses').delete().eq('provider_id', PROVIDER_ID);
+    // Alte Kurse löschen (nur puppeteer-Kurse)
+    await supabase.from('courses').delete()
+      .eq('provider_id', PROVIDER_ID)
+      .eq('scraper_method', 'puppeteer');
     console.log('Alte Kurse gelöscht.');
 
     for (const entry of urls) {
@@ -287,7 +290,6 @@ async function scrapeLearningCulture(): Promise<void> {
           });
           if (courses.length > 3) console.log(`  ... und ${courses.length - 3} weitere Kurse`);
 
-          // NEU: Preisverlauf speichern — Durchschnittspreis aller Kurse dieses Typs
           const coursesWithPrice = courses.filter(c => c.price_chf !== null);
           if (coursesWithPrice.length > 0) {
             const avgPrice = Math.round(

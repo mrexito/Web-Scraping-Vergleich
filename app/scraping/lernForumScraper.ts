@@ -164,6 +164,7 @@ async function scrapeCoursesFromPage(page: Page, pageUrl: string, courseType: st
       is_online: item.is_online,
       verfuegbarkeit: item.verfuegbarkeit,
       last_scraped_at: new Date().toISOString(),
+      scraper_method: 'puppeteer',
     });
   }
 
@@ -222,7 +223,10 @@ async function scrapeLernForum(): Promise<void> {
       console.log('✓ CourseDetails Metadaten aktualisiert');
     }
 
-    await supabase.from('courses').delete().eq('provider_id', PROVIDER_ID);
+    // Alte Kurse löschen (nur puppeteer-Kurse)
+    await supabase.from('courses').delete()
+      .eq('provider_id', PROVIDER_ID)
+      .eq('scraper_method', 'puppeteer');
     console.log('Alte Kurse gelöscht.');
 
     for (const entry of urls) {
@@ -250,7 +254,6 @@ async function scrapeLernForum(): Promise<void> {
           });
           if (courses.length > 3) console.log(`  ... und ${courses.length - 3} weitere Kurse`);
 
-          // NEU: Preisverlauf speichern — Durchschnittspreis aller Kurse dieses Typs
           const coursesWithPrice = courses.filter(c => c.price_chf !== null);
           if (coursesWithPrice.length > 0) {
             const avgPrice = Math.round(

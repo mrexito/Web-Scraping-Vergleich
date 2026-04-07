@@ -13,8 +13,7 @@ COLLECTOR_ID = os.getenv("BRIGHT_DATA_COLLECTOR_ID_AVIDII")
 SUPABASE_URL = os.getenv("NEXT_PUBLIC_SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
-
-PROVIDER_ID = 14  # Avidii
+PROVIDER_ID = 3
 
 URLS = [
     {"url": "https://avidii.ch/gymivorbereitung-langzeitgymnasium",  "course_type": "langgymi"},
@@ -121,18 +120,19 @@ def transform_courses(data: list) -> list:
         final_price = None if is_einzelkurs else price_value
 
         courses.append({
-            "provider_id": PROVIDER_ID,
-            "title": f"Gymivorbereitung {'Langzeitgymnasium' if course_type == 'langgymi' else 'Kurzzeitgymnasium'} | {course_name} | {weekday}",
-            "price_chf": final_price,
-            "location": location,
-            "occurrence": f"{weekday}, {time_str}" if weekday and time_str else weekday,
-            "course_type": course_type,
-            "course_url": url,
-            "is_online": False,
-            "verfuegbarkeit": clean_availability(availability),
-            "start_date": start_date,
-            "end_date": end_date,
+            "provider_id":     PROVIDER_ID,
+            "title":           f"Gymivorbereitung {'Langzeitgymnasium' if course_type == 'langgymi' else 'Kurzzeitgymnasium'} | {course_name} | {weekday}",
+            "price_chf":       final_price,
+            "location":        location,
+            "occurrence":      f"{weekday}, {time_str}" if weekday and time_str else weekday,
+            "course_type":     course_type,
+            "course_url":      url,
+            "is_online":       False,
+            "verfuegbarkeit":  clean_availability(availability),
+            "start_date":      start_date,
+            "end_date":        end_date,
             "last_scraped_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "scraper_method":  "brightdata",
         })
 
     return courses
@@ -142,9 +142,12 @@ def save_to_supabase(courses: list) -> None:
     """Löscht alte Kurse und speichert neue in Supabase."""
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-    # Alte Kurse löschen
-    supabase.table("courses").delete().eq("provider_id", PROVIDER_ID).execute()
-    print(f"Alte Kurse gelöscht.")
+    # Nur eigene Kurse löschen (nicht die von anderen Scrapern)
+    supabase.table("courses").delete()\
+        .eq("provider_id", PROVIDER_ID)\
+        .eq("scraper_method", "brightdata")\
+        .execute()
+    print("Alte Kurse gelöscht.")
 
     # Neue Kurse einfügen
     supabase.table("courses").insert(courses).execute()
@@ -158,7 +161,7 @@ def save_to_supabase(courses: list) -> None:
             supabase.table("price_history").insert({
                 "provider_id": PROVIDER_ID,
                 "course_type": course_type,
-                "price_chf": avg_price,
+                "price_chf":   avg_price,
                 "recorded_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             }).execute()
             print(f"✓ price_history: Provider {PROVIDER_ID} | {course_type} | CHF {avg_price}")
@@ -166,19 +169,11 @@ def save_to_supabase(courses: list) -> None:
 
 def main():
     try:
-        # Scraper starten
         job_id = trigger_scraper()
-
-        # Warten bis Daten bereit sind
         raw_data = wait_for_results(job_id)
-
-        # Daten transformieren
         courses = transform_courses(raw_data)
         print(f"  {len(courses)} Kurse transformiert")
-
-        # In Supabase speichern
         save_to_supabase(courses)
-
         print("\nAvidii Bright Data Scraping abgeschlossen!")
 
     except Exception as e:
