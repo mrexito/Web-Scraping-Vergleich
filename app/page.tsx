@@ -38,8 +38,8 @@ const UtilityAnalysis = async () => {
     supabase
       .from('courses')
       .select(
-        `provider_id, price_chf, price_regular_chf, discount_valid_until,
-         course_type, location, occurrence, start_date,
+        `provider_id, title, price_chf, price_regular_chf, discount_valid_until,
+         course_type, location, occurrence, course_time, start_date, end_date,
          verfuegbarkeit, is_online, course_url`
       ),
   ]);
@@ -50,7 +50,7 @@ const UtilityAnalysis = async () => {
 
   const validProviders = parseGymiProviders(rawProviders ?? []);
   const validCourseDetails = parseCourseDetails(rawCourseDetails ?? []);
-  const validCourses = parseCourses(rawCourses ?? []);  // NEU: Zod-Validierung für courses
+  const validCourses = parseCourses(rawCourses ?? []); 
   const transformedProviders = transformProviders(validProviders, validCourses, validCourseDetails);
 
   return (
@@ -59,6 +59,7 @@ const UtilityAnalysis = async () => {
         <UtilityAnalysisInteraction
           GymiProviders={transformedProviders}
           CourseDetails={validCourseDetails}
+          Courses={validCourses}
         />
       </div>
     </div>

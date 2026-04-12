@@ -1,14 +1,17 @@
 import { z } from 'zod';
 
 export const CourseSchema = z.object({
-  provider_id: z.number().int().positive(),
+  provider_id: z.number().int().positive().nullable(),
+  title: z.string().nullable().optional(),
   price_chf: z.number().positive().nullable(),
-  price_regular_chf: z.number().positive().nullable().optional(),    // Regulärpreis (nur Gymivorbereitung Zürich)
-  discount_valid_until: z.string().nullable().optional(),            // Ablaufdatum Frühbucherrabatt
+  price_regular_chf: z.number().positive().nullable().optional(),
+  discount_valid_until: z.string().nullable().optional(),
   course_type: z.enum(['langgymi', 'kurzgymi']).nullable(),
   location: z.string().nullable(),
   occurrence: z.string().nullable(),
+  course_time: z.string().nullable().optional(),
   start_date: z.string().nullable(),
+  end_date: z.string().nullable().optional(),
   verfuegbarkeit: z.enum(['viele', 'wenige', 'ausgebucht']).nullable(),
   is_online: z.boolean().nullable(),
   course_url: z.string().url().nullable(),

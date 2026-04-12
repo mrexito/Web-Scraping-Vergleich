@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { useScoringStore, CRITERIA_OPTIONS } from '@/store/scoringStore';
 import GymiProviderOverview from './GymiProviderOverview';
 import type { CourseDetail } from '@/schemas/courseDetailSchema';
+import type { Course } from '@/schemas/courseSchema';
 import type { Kurstyp } from '@/utils/utilityAnalysis/calculation';
 
 export interface TransformedGymiProviders {
@@ -29,6 +30,7 @@ export interface TransformedGymiProviders {
 interface Props {
   GymiProviders: TransformedGymiProviders[];
   CourseDetails: CourseDetail[];
+  Courses: Course[];
 }
 
 const KURSTYP_OPTIONS: { value: Kurstyp; label: string }[] = [
@@ -36,7 +38,7 @@ const KURSTYP_OPTIONS: { value: Kurstyp; label: string }[] = [
   { value: 'kurzgymi', label: 'Kurzzeitgymnasium' },
 ];
 
-export default function UtilityAnalysisInteraction({ GymiProviders, CourseDetails }: Props) {
+export default function UtilityAnalysisInteraction({ GymiProviders, CourseDetails, Courses }: Props) {
   const {
     params,
     kurstyp,
@@ -60,7 +62,7 @@ export default function UtilityAnalysisInteraction({ GymiProviders, CourseDetail
     if (result !== true) alert(result);
   };
 
-  // NEU: handleReset ruft nur noch reset() auf — kein manuelles Kriterien-Setzen nötig
+  // handleReset ruft nur noch reset() auf 
   const handleReset = () => reset();
 
   if (ratedProviders.length > 0) {
@@ -72,7 +74,7 @@ export default function UtilityAnalysisInteraction({ GymiProviders, CourseDetail
         >
           Neu ausrechnen
         </button>
-        <GymiProviderOverview gymiProviders={ratedProviders} courseDetails={CourseDetails} />
+        <GymiProviderOverview gymiProviders={ratedProviders} courseDetails={CourseDetails} courses={Courses} />
       </>
     );
   }
