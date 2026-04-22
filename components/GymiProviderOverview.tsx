@@ -7,6 +7,7 @@ const NACHHILFE_AKADEMIE_ID = 6;
 const LERNTERRASSE_ID = 11;
 const LOGOS_LEHRERTEAM_ID = 10;
 const SCHLAUMACHER_ID = 9;
+const GYMIVORBEREITUNG_FOKUS_ID = 5;
 
 export interface RatedGymiProviders {
     id: number;
@@ -312,6 +313,11 @@ const AbschnittAccordion = ({
                 <div>
                     <div style={{ fontSize: '12px', fontWeight: 500, color: 'var(--color-text-primary)' }}>{abschnitt}</div>
                     {meta && <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)', marginTop: '2px' }}>{meta.beschreibung}</div>}
+                    {abschnitt === 'Gemäss Teil 1' && (
+                        <div style={{ fontSize: '11px', color: '#854F0B', marginTop: '2px' }}>
+                            ℹ️ Standort identisch mit deinem gebuchten Teil 1 Kurs
+                        </div>
+                    )}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     {preis != null && (
@@ -338,7 +344,9 @@ const AbschnittAccordion = ({
                                 return (
                                     <tr key={i} style={{ background: i % 2 !== 0 ? 'var(--color-background-secondary)' : 'transparent' }}>
                                         <td style={{ ...td(isLast), fontWeight: 500 }}>{course.title?.split('|')[0]?.trim() || '—'}</td>
-                                        <td style={td(isLast)}>{normalizeWochentag(course.occurrence)}</td>
+                                        <td style={td(isLast)}>
+                                            {normalizeWochentag(course.occurrence)}
+                                        </td>
                                         <td style={td(isLast)}>{course.course_time || '—'}</td>
                                         <td style={{ ...td(isLast), whiteSpace: 'nowrap' }}>
                                             {course.start_date ? new Date(course.start_date).toLocaleDateString('de-CH', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'}
@@ -377,6 +385,29 @@ const CourseTable = ({
     }
 
     if (isLernterrasse) {
+        // Gymivorbereitung Fokus: nach Standort gruppieren
+        if (providerId === GYMIVORBEREITUNG_FOKUS_ID) {
+            const standortGroups: Record<string, Course[]> = {};
+            for (const course of filtered) {
+                const standort = course.location || 'Weitere';
+                if (!standortGroups[standort]) standortGroups[standort] = [];
+                standortGroups[standort].push(course);
+            }
+            const orderedStandorte = Object.keys(standortGroups).sort();
+            return (
+                <div>
+                    {orderedStandorte.map((standort, idx) => (
+                        <AbschnittAccordion
+                            key={standort}
+                            abschnitt={standort}
+                            courses={standortGroups[standort]}
+                            defaultOpen={idx === 0}
+                        />
+                    ))}
+                </div>
+            );
+        }
+
         // Logos Lehrerteam + Schlaumacher: direkt nach Abschnitt gruppieren (keine Stufen)
         if (providerId === LOGOS_LEHRERTEAM_ID || providerId === SCHLAUMACHER_ID) {
             const abschnittGroups: Record<string, Course[]> = {};
@@ -458,7 +489,14 @@ const CourseTable = ({
                                         {typeBadge(course.course_type)}
                                     </div>
                                 </td>
-                                <td style={td(isLast)}>{course.location || '—'}</td>
+                                <td style={td(isLast)}>
+                                    {course.location === 'Gemäss Teil 1' ? (
+                                        <span>
+                                            <span style={{ color: 'var(--color-text-secondary)', fontStyle: 'italic' }}>Gemäss Teil 1</span>
+                                            <span style={{ display: 'block', fontSize: '10px', color: '#854F0B', marginTop: '2px' }}>ℹ️ Identisch mit gewähltem Teil 1 Standort</span>
+                                        </span>
+                                    ) : course.location || '—'}
+                                </td>
                                 <td style={td(isLast)}>{course.occurrence || '—'}</td>
                                 <td style={td(isLast)}>{course.course_time || '—'}</td>
                                 <td style={{ ...td(isLast), whiteSpace: 'nowrap' }}>
@@ -657,7 +695,7 @@ const GymiProviderOverview = ({ gymiProviders, courseDetails, courses }: GymiPro
                                         <CourseTable
                                             courses={providerCourses}
                                             kurstyp={selectedProvider.kurstyp}
-                                            isLernterrasse={selectedProvider.id === LERNTERRASSE_ID || selectedProvider.id === LOGOS_LEHRERTEAM_ID || selectedProvider.id === SCHLAUMACHER_ID}
+                                            isLernterrasse={selectedProvider.id === LERNTERRASSE_ID || selectedProvider.id === LOGOS_LEHRERTEAM_ID || selectedProvider.id === SCHLAUMACHER_ID || selectedProvider.id === GYMIVORBEREITUNG_FOKUS_ID}
                                             providerId={selectedProvider.id}
                                         />
                                     </div>
