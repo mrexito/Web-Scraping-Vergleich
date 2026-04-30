@@ -1,177 +1,110 @@
-import os
-import re
+"""
+sGAI_logosLehrerteamScraper.py (refactored)
+============================================
+ScrapeGraphAI-Scraper für Logos Lehrerteam.
+Scrapt 3 Seiten: Übersicht (Metadaten) + Kursdaten + Kosten.
+Besonderheit: baut Kurse aus Template zusammen, dupliziert für beide Kurstypen.
+"""
+
 import json
 import time
-from openai import OpenAI
-from langchain_openai import ChatOpenAI
-from dotenv import load_dotenv
-from supabase import create_client
 from scrapegraphai.graphs import SmartScraperGraph
 
-load_dotenv("../../../.env")
-
-SUPABASE_URL  = os.getenv("NEXT_PUBLIC_SUPABASE_URL")
-SUPABASE_KEY  = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-BFH_API_KEY   = os.getenv("BFH_LLM_API_KEY")
-
-PROVIDER_ID   = 10 
-PROVIDER_NAME = "Logos Lehrerteam"
-BASE_URL      = "https://www.logos-lehrerteam.ch"
-ANMELDUNG_URL = f"{BASE_URL}/kurse-gymivorbereitung-zap-anmeldung"
-
-KURSTYPEN = ["langgymi", "kurzgymi"]
-
-llm_instance = ChatOpenAI(
-    model="gpt-oss:120b",
-    api_key=BFH_API_KEY,
-    base_url="https://inference.mlmp.ti.bfh.ch/api/v1",
+from scrape_utils import (
+    supabase,
+    graph_config,
+    test_bfh_connection,
+    parse_price,
+    convert_date,
+    extract_json_from_string,
+    record_price_history,
+    log_scrape_error,
+    ScrapeRun,
 )
 
-graph_config = {
-    "llm": {
-        "model_instance": llm_instance,
-        "model_tokens": 32000,
-    },
-    "verbose": True,
-    "headless": True,
-}
+
+SCRAPER_METHOD = "scrapegraphai"
+PROVIDER_ID    = 10
+PROVIDER_NAME  = "Logos Lehrerteam"
+BASE_URL       = "https://www.logos-lehrerteam.ch"
+ANMELDUNG_URL  = f"{BASE_URL}/kurse-gymivorbereitung-zap-anmeldung"
+KURSTYPEN      = ("langgymi", "kurzgymi")
+
 
 PROMPT_METADATA = """
-Du bist ein Datenextraktions-Assistent für eine Vergleichsplattform von Gymi-Vorbereitungskursen.
-Analysiere diese Seite semantisch und beantworte folgende Fragen:
+Du bist ein Datenextraktions-Assistent. Analysiere diese Seite semantisch:
 
 - aufsatzkorrektur: true wenn Aufsatztraining, Aufsatzkurs oder Schreibtraining erwähnt wird
-- einstufungstest: true wenn Einstufungstest, Standortbestimmung, individuelle Beurteilung, Minimalnoten oder Aufnahmevoraussetzungen erwähnt werden
-- e_learning: true wenn digitales Lehrmittel, E-Learning, Online-Plattform (z.B. edulo) oder digitaler Unterricht erwähnt wird
-- pruefungsarchiv: true wenn Probeprüfungen, Simulationsprüfungen oder Prüfungstraining erwähnt wird
-- beratungsgespraech: true wenn Beratung, Schulberatung, Kontakt oder persönliche Beratung angeboten wird
-- lernunterlagen: true wenn Lehrmittel, Arbeitsheft, Kursmaterial oder Lernmaterial inbegriffen erwähnt wird
-- pruefungssimulation: true wenn Simulationsprüfung oder simulierte Prüfung explizit erwähnt wird
-- einzelkurse: true wenn Einzelunterricht, Privatunterricht oder Einzelkurse angeboten werden
-- max_teilnehmer: maximale Gruppengrösse als Zahl (z.B. 6). Bei "maximal 6 Schüler:innen" → 6
-- standorte: Liste aller Kursorte (z.B. ["Zürich-City", "Winterthur", "Uster"])
+- einstufungstest: true wenn Einstufungstest, Standortbestimmung, Minimalnoten erwähnt werden
+- e_learning: true wenn digitales Lehrmittel, E-Learning oder Online-Plattform (z.B. edulo) erwähnt wird
+- pruefungsarchiv: true wenn Probeprüfungen oder Simulationsprüfungen erwähnt werden
+- beratungsgespraech: true wenn Beratung oder Kontakt angeboten wird
+- lernunterlagen: true wenn Lehrmittel, Arbeitsheft oder Kursmaterial inbegriffen ist
+- pruefungssimulation: true wenn Simulationsprüfung explizit erwähnt wird
+- einzelkurse: true wenn Einzelunterricht oder Privatunterricht angeboten werden
+- max_teilnehmer: maximale Gruppengrösse als Zahl
+- standorte: Liste aller Kursorte
 
 Antworte NUR mit reinem JSON: {"metadata": {...}}
 """
 
 PROMPT_KURSDATEN = """
-Du bist ein Datenextraktions-Assistent. Extrahiere alle Kursinformationen von dieser Seite.
+Extrahiere alle Kursinformationen. Kurse in 3 Teile (Teil 1, 2, 3) an Mittwoch oder Samstag.
+Ausserdem Ferienkurse (Intensivkurse).
 
-Die Kurse sind in 3 Teile aufgeteilt (Teil 1, Teil 2, Teil 3) und finden an Mittwoch oder Samstag statt.
-Es gibt auch Ferienkurse (Intensivkurse).
-
-Für jeden Kursabschnitt gib zurück:
-- kursabschnitt: "Teil 1", "Teil 2", "Teil 3", "Herbstferienkurs 1", "Herbstferienkurs 2", "Weihnachtsferienkurs" oder "Sportferienkurs"
+Für jeden Kursabschnitt:
+- kursabschnitt: "Teil 1", "Teil 2", "Teil 3", "Herbstferienkurs 1", etc.
 - kurstyp_intern: "schulbegleitend" oder "ferienkurs"
 - weekdays: Liste der Wochentage (z.B. ["Mittwoch", "Samstag"])
-- start_date_mi: Startdatum Mittwochkurse im Format TT.MM.JJJJ
-- end_date_mi: Enddatum Mittwochkurse im Format TT.MM.JJJJ
-- start_date_sa: Startdatum Samstagkurse im Format TT.MM.JJJJ
-- end_date_sa: Enddatum Samstagkurse im Format TT.MM.JJJJ
-- dauer_wochen: Anzahl Wochen als Zahl (z.B. 6, 8, 5)
-
-Kurszeiten (diese sind fix für alle Teile):
-- Mittwoch Nachmittag: 13:30-15:10 und 15:30-17:10
-- Samstag Vormittag: 8:30-10:10 und 10:30-12:10
-- Samstag Nachmittag (nur ZH-City): 13:00-14:40 und 15:00-16:40
+- start_date_mi, end_date_mi (TT.MM.JJJJ, für Mittwochkurse)
+- start_date_sa, end_date_sa (TT.MM.JJJJ, für Samstagkurse)
+- dauer_wochen: Zahl
 
 Antworte NUR mit reinem JSON: {"kurse": [...]}
 """
 
 PROMPT_KOSTEN = """
-Du bist ein Datenextraktions-Assistent. Extrahiere die Preisinformationen von dieser Seite.
-
-Gib zurück:
-- preis_gesamt: Gesamtpreis für alle 3 Teile bei Frühbuchung als Zahl in CHF (z.B. 2950)
-- preis_regulaer: Regulärpreis ohne Rabatt als Zahl in CHF, falls erwähnt
-- fruehbucher_rabatt_prozent: Frühbucherrabatt in Prozent als Zahl (z.B. 19)
-- lehrmittel_inbegriffen: true wenn Lehrmittel im Preis inbegriffen
+Extrahiere Preisinformationen:
+- preis_gesamt: Gesamtpreis alle 3 Teile bei Frühbuchung als Zahl in CHF
+- preis_regulaer: Regulärpreis ohne Rabatt in CHF
+- fruehbucher_rabatt_prozent: Rabatt in Prozent
+- lehrmittel_inbegriffen: bool
 
 Antworte NUR mit reinem JSON: {"kosten": {...}}
 """
 
 
-def extract_json_from_string(raw: str) -> dict:
-    start = raw.find('{')
-    end = raw.rfind('}')
-    if start != -1 and end != -1 and end > start:
-        try:
-            return json.loads(raw[start:end+1])
-        except json.JSONDecodeError:
-            pass
-    return {}
-
-
 def scrape_page(url: str, prompt: str) -> dict:
     print(f"\n  Scrapt: {url}")
     try:
-        scraper = SmartScraperGraph(
-            prompt=prompt,
-            source=url,
-            config=graph_config,
-        )
+        scraper = SmartScraperGraph(prompt=prompt, source=url, config=graph_config)
         result = scraper.run()
     except Exception as e:
-        error_str = str(e)
-        print(f"  Warnung: Exception: {error_str[:120]}")
-        extracted = extract_json_from_string(error_str)
+        extracted = extract_json_from_string(str(e))
         if extracted:
-            print(f"  JSON aus Exception extrahiert.")
             return extracted
-        return {}
-
+        raise
     if isinstance(result, str):
-        extracted = extract_json_from_string(result)
-        if extracted:
-            return extracted
-        print(f"  Warnung: JSON-Parsing fehlgeschlagen. Rohtext: {result[:200]}")
-        return {}
-
+        return extract_json_from_string(result)
     return result if isinstance(result, dict) else {}
 
 
-def convert_date(raw) -> str | None:
-    if not raw:
-        return None
-    m = re.match(r"(\d{1,2})\.(\d{1,2})\.(\d{4})", str(raw).strip())
-    if m:
-        return f"{m.group(3)}-{m.group(2).zfill(2)}-{m.group(1).zfill(2)}"
-    return None
-
-
-def merge_metadata(base: dict, extra: dict) -> dict:
-    result = dict(base)
-    for key, val in extra.items():
-        if key not in result:
-            result[key] = val
-        elif isinstance(val, bool) and val:
-            result[key] = True
-        elif key == "max_teilnehmer" and val is not None:
-            try:
-                existing = int(str(result.get(key, 0) or 0))
-                new = int(str(val))
-                result[key] = max(existing, new)
-            except (ValueError, TypeError):
-                if result.get(key) is None:
-                    result[key] = val
-    return result
-
-
 def build_courses(kursdaten: dict, kosten: dict, metadata: dict) -> list:
-    """Baut Kurs-Objekte aus den gescrapten Daten."""
+    """Baut Kurs-Objekte aus den Template-Daten."""
     courses = []
-    kurse = kursdaten.get("kurse", [])
-    preis = kosten.get("kosten", {}).get("preis_gesamt")
+    kurse = kursdaten.get("kurse", []) or []
+    preis = parse_price(kosten.get("kosten", {}).get("preis_gesamt"))
     standorte = metadata.get("standorte", [])
-    location = ", ".join(standorte) if standorte else "Zürich und Umgebung"
+    if isinstance(standorte, list):
+        location = ", ".join(str(s) for s in standorte if s) or "Zürich und Umgebung"
+    else:
+        location = str(standorte) or "Zürich und Umgebung"
 
     for kurs in kurse:
-        abschnitt     = kurs.get("kursabschnitt", "")
-        kurstyp_int   = kurs.get("kurstyp_intern", "schulbegleitend")
-        weekdays      = kurs.get("weekdays", [])
-        dauer         = kurs.get("dauer_wochen")
+        abschnitt   = kurs.get("kursabschnitt", "")
+        kurstyp_int = kurs.get("kurstyp_intern", "schulbegleitend")
+        weekdays    = kurs.get("weekdays", []) or []
 
-        # Für schulbegleitende Kurse: je ein Eintrag pro Wochentag
         if kurstyp_int == "schulbegleitend":
             for wochentag in weekdays:
                 if wochentag.lower() == "mittwoch":
@@ -184,10 +117,9 @@ def build_courses(kursdaten: dict, kosten: dict, metadata: dict) -> list:
                     course_time = "8:30-10:10 / 10:30-12:10"
 
                 for kurstyp in KURSTYPEN:
-                    title = f"Gymivorbereitung {abschnitt} | {wochentag}"
                     courses.append({
                         "provider_id":     PROVIDER_ID,
-                        "title":           title,
+                        "title":           f"Gymivorbereitung {abschnitt} | {wochentag}",
                         "price_chf":       preis,
                         "location":        location,
                         "occurrence":      wochentag,
@@ -199,17 +131,16 @@ def build_courses(kursdaten: dict, kosten: dict, metadata: dict) -> list:
                         "is_online":       False,
                         "verfuegbarkeit":  "viele",
                         "last_scraped_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                        "scraper_method":  "scrapegraphai",
+                        "scraper_method":  SCRAPER_METHOD,
                     })
         else:
             # Ferienkurs
             start = convert_date(kurs.get("start_date_mi") or kurs.get("start_date_sa"))
-            end   = convert_date(kurs.get("end_date_mi") or kurs.get("end_date_sa"))
+            end   = convert_date(kurs.get("end_date_mi")   or kurs.get("end_date_sa"))
             for kurstyp in KURSTYPEN:
-                title = f"Ferienkurs {abschnitt}"
                 courses.append({
                     "provider_id":     PROVIDER_ID,
-                    "title":           title,
+                    "title":           f"Ferienkurs {abschnitt}",
                     "price_chf":       preis,
                     "location":        "Zürich-City",
                     "occurrence":      "Mo–Fr",
@@ -221,134 +152,119 @@ def build_courses(kursdaten: dict, kosten: dict, metadata: dict) -> list:
                     "is_online":       False,
                     "verfuegbarkeit":  "viele",
                     "last_scraped_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                    "scraper_method":  "scrapegraphai",
+                    "scraper_method":  SCRAPER_METHOD,
                 })
 
-    print(f"  -> {len(courses)} Kurs-Objekte generiert")
+    print(f"  → {len(courses)} Kurs-Objekte generiert")
     return courses
 
 
-def save_metadata(supabase, metadata: dict, kosten: dict) -> None:
+def save_metadata(metadata: dict, kosten: dict) -> None:
     if not metadata:
         return
-
     max_t = metadata.get("max_teilnehmer")
     max_t_str = str(int(max_t)) if max_t and str(max_t).isdigit() else None
     standorte = metadata.get("standorte", [])
-    standort_str = ", ".join(standorte) if standorte else "Zürich und Umgebung"
+    if isinstance(standorte, list):
+        standort_str = ", ".join(str(s) for s in standorte if s) or "Zürich und Umgebung"
+    else:
+        standort_str = str(standorte) or "Zürich und Umgebung"
 
     supabase.table("GymiProviders").update({
         "E-Learning":                     bool(metadata.get("e_learning", False)),
         "Aufsatzkorrektur":               bool(metadata.get("aufsatzkorrektur", False)),
         "Einstufungstest":                bool(metadata.get("einstufungstest", False)),
         "Einzelkurse":                    bool(metadata.get("einzelkurse", False)),
-        "Onlinepruefung":                 False,
         "Pruefungssimultaion":            bool(metadata.get("pruefungssimulation", False)),
         "Maximale Anzahl der Teilnehmer": max_t_str,
     }).eq("ID", PROVIDER_ID).execute()
     print("  ✓ GymiProviders aktualisiert")
 
+    # Lernunterlagen kommt bei Logos aus kosten.lehrmittel_inbegriffen
+    lehrmittel = bool(kosten.get("kosten", {}).get("lehrmittel_inbegriffen", False))
+
     supabase.table("CourseDetails").update({
-        "Pruefungsarchiv":                        bool(metadata.get("pruefungsarchiv", False)),
-        "Beratungsgespraech":                     bool(metadata.get("beratungsgespraech", False)),
-        "Eigene Lernunterlagen":                  bool(kosten.get("kosten", {}).get("lehrmittel_inbegriffen", False)),
-        "Unterstuezung ausserhalb Unterrichtszeit": False,
-        "info freien Plaetze?":                   False,
-        "Standort":                               standort_str,
-        "Kursart (Intensiv- oder Langzeitkurs)":  "Beides",
-        "Qualitaetsbewertung":                    None,
+        "Pruefungsarchiv":       bool(metadata.get("pruefungsarchiv", False)),
+        "Beratungsgespraech":    bool(metadata.get("beratungsgespraech", False)),
+        "Eigene Lernunterlagen": lehrmittel,
+        "Standort":              standort_str,
     }).eq("ID", PROVIDER_ID).execute()
     print("  ✓ CourseDetails aktualisiert")
 
 
-def save_courses(supabase, courses: list) -> None:
-    supabase.table("courses").delete()\
-        .eq("provider_id", PROVIDER_ID)\
-        .eq("scraper_method", "scrapegraphai")\
-        .execute()
-    print("  Alte Kurse gelöscht.")
-
-    if not courses:
-        print("  Keine Kurse zum Speichern.")
-        return
-
-    supabase.table("courses").insert(courses).execute()
-    print(f"  ✓ {len(courses)} Kurs(e) gespeichert")
-
-    for course_type in ["langgymi", "kurzgymi"]:
-        typed = [c for c in courses if c["course_type"] == course_type and c["price_chf"]]
-        if typed:
-            avg = round(sum(c["price_chf"] for c in typed) / len(typed))
-            supabase.table("price_history").insert({
-                "provider_id": PROVIDER_ID,
-                "course_type": course_type,
-                "price_chf":   avg,
-                "recorded_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            }).execute()
-            print(f"  ✓ price_history: {course_type} | CHF {avg}")
-
-
 def main():
     print(f"Starte {PROVIDER_NAME} Scraper (ScrapeGraphAI + BFH LLM)...")
-    start_time = time.time()
 
     if not test_bfh_connection():
         print("  Abbruch: BFH LLM nicht erreichbar.")
         return
 
-    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+    with ScrapeRun(SCRAPER_METHOD, PROVIDER_ID) as run:
+        metadata = {}
+        kursdaten_result = {}
+        kosten_result = {}
 
-    # Schritt 1: Metadaten von Übersichtsseite
-    print(f"\n  Schritt 1: Metadaten scrapen")
-    metadata_result = scrape_page(f"{BASE_URL}/kurse-gymivorbereitung-zap-uebersicht", PROMPT_METADATA)
-    metadata = metadata_result.get("metadata", {})
-    print(f"  Metadaten: {json.dumps(metadata, ensure_ascii=False)}")
-    time.sleep(2)
+        try:
+            print(f"\n  Schritt 1: Metadaten scrapen")
+            metadata = (scrape_page(f"{BASE_URL}/kurse-gymivorbereitung-zap-uebersicht",
+                                    PROMPT_METADATA).get("metadata") or {})
+            time.sleep(2)
+        except Exception as e:
+            log_scrape_error(run.id, PROVIDER_ID, "SCRAPING_ERROR", f"Metadaten: {e}")
+            run.error_count += 1
 
-    # Schritt 2: Kursdaten
-    print(f"\n  Schritt 2: Kursdaten scrapen")
-    kursdaten_result = scrape_page(f"{BASE_URL}/kurse-gymivorbereitung-zap-kursdaten", PROMPT_KURSDATEN)
-    time.sleep(2)
+        try:
+            print(f"\n  Schritt 2: Kursdaten scrapen")
+            kursdaten_result = scrape_page(
+                f"{BASE_URL}/kurse-gymivorbereitung-zap-kursdaten", PROMPT_KURSDATEN)
+            time.sleep(2)
+        except Exception as e:
+            log_scrape_error(run.id, PROVIDER_ID, "SCRAPING_ERROR", f"Kursdaten: {e}")
+            run.error_count += 1
 
-    # Schritt 3: Kosten
-    print(f"\n  Schritt 3: Kosten scrapen")
-    kosten_result = scrape_page(f"{BASE_URL}/kurse-gymivorbereitung-zap-kosten", PROMPT_KOSTEN)
-    print(f"  Kosten: {json.dumps(kosten_result, ensure_ascii=False)}")
-    time.sleep(2)
+        try:
+            print(f"\n  Schritt 3: Kosten scrapen")
+            kosten_result = scrape_page(
+                f"{BASE_URL}/kurse-gymivorbereitung-zap-kosten", PROMPT_KOSTEN)
+            time.sleep(2)
+        except Exception as e:
+            log_scrape_error(run.id, PROVIDER_ID, "SCRAPING_ERROR", f"Kosten: {e}")
+            run.error_count += 1
 
-    # Kurse aufbauen
-    print(f"\n  Kurse aufbauen...")
-    courses = build_courses(kursdaten_result, kosten_result, metadata)
+        courses = build_courses(kursdaten_result, kosten_result, metadata)
 
-    print(f"\n  Gesamt: {len(courses)} Kurse")
-    for c in courses[:5]:
-        print(f"  {c['course_type']} | {c['title'][:55]} | {c['occurrence']} {c['course_time'] or ''} | {c['start_date']} | CHF {c['price_chf']}")
-    if len(courses) > 5:
-        print(f"  ... und {len(courses) - 5} weitere")
+        try:
+            save_metadata(metadata, kosten_result)
+        except Exception as e:
+            log_scrape_error(run.id, PROVIDER_ID, "METADATA_ERROR", str(e))
+            run.error_count += 1
 
-    save_metadata(supabase, metadata, kosten_result)
-    save_courses(supabase, courses)
+        supabase.table("courses").delete() \
+            .eq("provider_id", PROVIDER_ID) \
+            .eq("scraper_method", SCRAPER_METHOD) \
+            .execute()
+        print("  Alte ScrapeGraphAI-Kurse gelöscht.")
 
-    elapsed = round(time.time() - start_time, 2)
-    print(f"\n✓ {PROVIDER_NAME} abgeschlossen in {elapsed}s | {len(courses)} Kurse gespeichert")
+        if courses:
+            try:
+                supabase.table("courses").insert(courses).execute()
+                run.courses_found = len(courses)
+                print(f"  ✓ {len(courses)} Kurs(e) gespeichert")
 
+                for course_type in KURSTYPEN:
+                    typed = [c for c in courses
+                             if c["course_type"] == course_type and c["price_chf"]]
+                    if typed:
+                        avg = round(sum(c["price_chf"] for c in typed) / len(typed))
+                        record_price_history(PROVIDER_ID, course_type, avg)
+            except Exception as e:
+                log_scrape_error(run.id, PROVIDER_ID, "INSERT_ERROR", str(e))
+                run.error_count += 1
+        else:
+            log_scrape_error(run.id, PROVIDER_ID, "NO_COURSES_FOUND", "Keine Kurse.")
+            run.error_count += 1
 
-def test_bfh_connection() -> bool:
-    print("  Teste BFH LLM Verbindung...")
-    try:
-        client = OpenAI(
-            base_url="https://inference.mlmp.ti.bfh.ch/api/v1",
-            api_key=BFH_API_KEY,
-        )
-        response = client.chat.completions.create(
-            model="gpt-oss:120b",
-            messages=[{"role": "user", "content": "Antworte nur mit: OK"}],
-        )
-        print(f"  ✓ BFH LLM erreichbar: {response.choices[0].message.content.strip()}")
-        return True
-    except Exception as e:
-        print(f"  ✗ BFH LLM Verbindungsfehler: {e}")
-        return False
+    print(f"\n✓ {PROVIDER_NAME} abgeschlossen")
 
 
 if __name__ == "__main__":

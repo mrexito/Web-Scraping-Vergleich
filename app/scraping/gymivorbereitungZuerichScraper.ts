@@ -294,8 +294,10 @@ function extractUnterrichttage(courses: any[]): string | null {
 
 async function scrapeGymivorbereitungZuerich(): Promise<void> {
   let browser: Browser | null = null;
+  let coursesFound = 0;
+  let errorCount = 0;
 
-  const runId = await startScrapeRun();
+  const runId = await startScrapeRun('puppeteer', PROVIDER_ID);
   if (!runId) {
     console.error('Konnte keinen Scrape-Run starten. Abbruch.');
     return;
@@ -332,6 +334,7 @@ async function scrapeGymivorbereitungZuerich(): Promise<void> {
     if (metaProviderError) {
       console.error('Fehler beim Aktualisieren der GymiProviders:', metaProviderError.message);
       await logScrapeError(runId, PROVIDER_ID, 'METADATA_ERROR', metaProviderError.message);
+      errorCount++;
     } else {
       console.log('✓ GymiProviders Metadaten aktualisiert');
     }
@@ -349,6 +352,7 @@ async function scrapeGymivorbereitungZuerich(): Promise<void> {
     if (metaDetailError) {
       console.error('Fehler beim Aktualisieren der CourseDetails:', metaDetailError.message);
       await logScrapeError(runId, PROVIDER_ID, 'METADATA_ERROR', metaDetailError.message);
+      errorCount++;
     } else {
       console.log('✓ CourseDetails Metadaten aktualisiert');
     }
@@ -378,6 +382,7 @@ async function scrapeGymivorbereitungZuerich(): Promise<void> {
             runId, PROVIDER_ID, 'NO_COURSES_FOUND',
             `Keine Kurse gefunden auf ${entry.url}`
           );
+          errorCount++;
           continue;
         }
 
@@ -394,8 +399,10 @@ async function scrapeGymivorbereitungZuerich(): Promise<void> {
         if (error) {
           console.error('Fehler beim Speichern:', error.message);
           await logScrapeError(runId, PROVIDER_ID, 'INSERT_ERROR', error.message);
+          errorCount++;
         } else {
           console.log(`✓ ${courses.length} Kurs(e) [${entry.course_type}] gespeichert`);
+          coursesFound += courses.length;
           coursesWithPrice.slice(0, 3).forEach((c: any) => {
             console.log(
               `  -> "${c.title}" | CHF ${c.price_chf ?? 'N/A'} (regulär CHF ${c.price_regular_chf ?? 'N/A'}) | ` +
@@ -416,6 +423,7 @@ async function scrapeGymivorbereitungZuerich(): Promise<void> {
       } catch (err: any) {
         console.error(`Fehler beim Scraping von ${entry.url}:`, err.message);
         await logScrapeError(runId, PROVIDER_ID, 'SCRAPING_ERROR', err.message);
+        errorCount++;
       } finally {
         if (page) await page.close();
       }
@@ -431,6 +439,7 @@ async function scrapeGymivorbereitungZuerich(): Promise<void> {
       if (unterrichttagError) {
         console.error('Fehler beim Speichern des Unterrichttags:', unterrichttagError.message);
         await logScrapeError(runId, PROVIDER_ID, 'METADATA_ERROR', unterrichttagError.message);
+        errorCount++;
       } else {
         console.log(`✓ Unterrichttag gesetzt: ${unterrichttag}`);
       }
@@ -438,12 +447,14 @@ async function scrapeGymivorbereitungZuerich(): Promise<void> {
       console.warn('  Kein Unterrichttag aus Kursen ableitbar.');
     }
 
-    await finishScrapeRun(runId, 'success');
-    console.log(`\n${PROVIDER_NAME} Scraping abgeschlossen!`);
+    const finalStatus = errorCount === 0 ? 'success' : (coursesFound > 0 ? 'partial' : 'failed');
+    await finishScrapeRun(runId, finalStatus, coursesFound, errorCount);
+    console.log(`\n${PROVIDER_NAME} Scraping abgeschlossen! (${coursesFound} Kurse, ${errorCount} Fehler)`);
 
   } catch (err: any) {
     console.error('Allgemeiner Fehler:', err.message);
-    await finishScrapeRun(runId, 'error');
+    errorCount++;
+    await finishScrapeRun(runId, 'failed', coursesFound, errorCount);
   } finally {
     if (browser) await browser.close();
     console.log('Browser geschlossen.');

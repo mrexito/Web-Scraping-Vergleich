@@ -1,35 +1,51 @@
-import requests
-import time
-import re
 import os
-from supabase import create_client
+import re
+import sys
+import time
+import requests
 from dotenv import load_dotenv
+
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+_SGAI_DIR = os.path.normpath(os.path.join(_THIS_DIR, "..", "scrapeGraphAi"))
+if _SGAI_DIR not in sys.path:
+    sys.path.insert(0, _SGAI_DIR)
+
+from scrape_utils import (
+    supabase,
+    parse_price,
+    convert_date,
+    record_price_history,
+    log_scrape_error,
+    ScrapeRun,
+)
 
 load_dotenv()
 
-# Konfiguration
-BRIGHT_DATA_API_TOKEN = os.getenv("BRIGHT_DATA_API_TOKEN")
-COLLECTOR_ID = os.getenv("BRIGHT_DATA_COLLECTOR_ID_AVIDII")
-SUPABASE_URL = os.getenv("NEXT_PUBLIC_SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
-PROVIDER_ID = 3
+# KONFIGURATION
+SCRAPER_METHOD = "brightdata"
+PROVIDER_ID    = 3
+PROVIDER_NAME  = "Avidii"
+
+BRIGHT_DATA_API_TOKEN = os.getenv("BRIGHT_DATA_API_TOKEN")
+COLLECTOR_ID          = os.getenv("BRIGHT_DATA_COLLECTOR_ID_AVIDII")
 
 URLS = [
     {"url": "https://avidii.ch/gymivorbereitung-langzeitgymnasium",  "course_type": "langgymi"},
     {"url": "https://avidii.ch/gymivorbereitung-kurzzeitgymnasium", "course_type": "kurzgymi"},
 ]
 
-# Fallback-Preise von Avidii
+# Fallback-Preise von Avidii (wenn Bright Data den Preis nicht extrahiert)
 FALLBACK_PRICES = {
     "langgymi": 2950,
     "kurzgymi": 3650,
 }
 
 
+# HILFSFUNKTIONEN
 def trigger_scraper() -> str:
     """Startet den Bright Data Scraper und gibt die Job-ID zurück."""
-    print("Starte Bright Data Avidii Scraper...")
+    print("  Starte Bright Data Avidii Job...")
     response = requests.post(
         f"https://api.brightdata.com/dca/trigger?collector={COLLECTOR_ID}&queue_next=1",
         headers={
@@ -37,16 +53,17 @@ def trigger_scraper() -> str:
             "Content-Type": "application/json",
         },
         json=[{"url": entry["url"]} for entry in URLS],
+        timeout=30,
     )
     response.raise_for_status()
     job_id = response.json().get("collection_id")
-    print(f"Job gestartet: {job_id}")
+    print(f"  Job-ID: {job_id}")
     return job_id
 
 
 def wait_for_results(job_id: str, max_wait: int = 120) -> list:
     """Wartet bis der Job fertig ist und gibt die Ergebnisse zurück."""
-    print("Warte auf Ergebnisse...")
+    print("  Warte auf Bright Data Ergebnisse...")
     elapsed = 0
     while elapsed < max_wait:
         time.sleep(10)
@@ -54,36 +71,27 @@ def wait_for_results(job_id: str, max_wait: int = 120) -> list:
         response = requests.get(
             f"https://api.brightdata.com/dca/dataset?id={job_id}&format=json",
             headers={"Authorization": f"Bearer {BRIGHT_DATA_API_TOKEN}"},
+            timeout=30,
         )
         if response.status_code == 200:
             data = response.json()
             if data:
-                print(f"Ergebnisse erhalten nach {elapsed}s")
+                print(f"  ✓ Ergebnisse erhalten nach {elapsed}s")
                 return data
-        print(f"  Noch nicht fertig... ({elapsed}s)")
-    raise TimeoutError("Scraper hat nach 120s keine Ergebnisse geliefert.")
+        print(f"  ... noch nicht fertig ({elapsed}s)")
+    raise TimeoutError(f"Bright Data Job {job_id} hat nach {max_wait}s keine Ergebnisse geliefert.")
 
 
-def clean_availability(raw: str) -> str | None:
-    """Normalisiert den Verfügbarkeitsstatus."""
+def clean_availability(raw: str):
     if not raw:
         return None
     raw_lower = raw.lower()
-    if 'ausgebucht' in raw_lower:
-        return 'ausgebucht'
-    elif 'wenige' in raw_lower:
-        return 'wenige'
-    elif 'frei' in raw_lower or 'plätze' in raw_lower:
-        return 'viele'
-    return None
-
-
-def convert_date_py(raw: str) -> str | None:
-    """Konvertiert ISO-Datum oder None."""
-    if not raw:
-        return None
-    if 'T' in raw:
-        return raw[:10]
+    if "ausgebucht" in raw_lower:
+        return "ausgebucht"
+    if "wenige" in raw_lower:
+        return "wenige"
+    if "frei" in raw_lower or "plätze" in raw_lower:
+        return "viele"
     return None
 
 
@@ -99,85 +107,116 @@ def transform_courses(data: list) -> list:
         price_data = result.get("price", {})
         price_value = price_data.get("value") if price_data else None
 
-        # Fallback: bekannte Preise von Avidii
         if price_value is None:
             price_value = FALLBACK_PRICES[course_type]
-            print(f"  Fallback-Preis verwendet für {course_type}: CHF {price_value}")
+            print(f"    ⚠ Fallback-Preis verwendet ({course_type}): CHF {price_value}")
 
-        # Start- und Enddatum
-        start_date = convert_date_py(result.get("start_date"))
-        end_date = convert_date_py(result.get("end_date"))
-
-        # Kursname aus Bright Data
-        course_name = result.get("course_name", "")
-        location = result.get("location", "")
-        weekday = result.get("weekday", "")
-        time_str = result.get("time", "")
+        course_name  = result.get("course_name", "")
+        location     = result.get("location", "")
+        weekday      = result.get("weekday", "")
+        time_str     = result.get("time", "")
         availability = result.get("availability_status", "")
 
-        # Einzelkurs bekommt keinen Gruppenpreis
         is_einzelkurs = "einzel" in course_name.lower()
         final_price = None if is_einzelkurs else price_value
 
+        title = (
+            f"Gymivorbereitung "
+            f"{'Langzeitgymnasium' if course_type == 'langgymi' else 'Kurzzeitgymnasium'}"
+            f" | {course_name} | {weekday}"
+        )
+
         courses.append({
             "provider_id":     PROVIDER_ID,
-            "title":           f"Gymivorbereitung {'Langzeitgymnasium' if course_type == 'langgymi' else 'Kurzzeitgymnasium'} | {course_name} | {weekday}",
+            "title":           title,
             "price_chf":       final_price,
-            "location":        location,
-            "occurrence":      f"{weekday}, {time_str}" if weekday and time_str else weekday,
+            "location":        location or None,
+            "occurrence":      f"{weekday}, {time_str}" if weekday and time_str else (weekday or None),
             "course_type":     course_type,
             "course_url":      url,
             "is_online":       False,
             "verfuegbarkeit":  clean_availability(availability),
-            "start_date":      start_date,
-            "end_date":        end_date,
+            "start_date":      convert_date(result.get("start_date")),
+            "end_date":        convert_date(result.get("end_date")),
             "last_scraped_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            "scraper_method":  "brightdata",
+            "scraper_method":  SCRAPER_METHOD,
         })
 
     return courses
 
 
-def save_to_supabase(courses: list) -> None:
-    """Löscht alte Kurse und speichert neue in Supabase."""
-    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-    # Nur eigene Kurse löschen (nicht die von anderen Scrapern)
-    supabase.table("courses").delete()\
-        .eq("provider_id", PROVIDER_ID)\
-        .eq("scraper_method", "brightdata")\
-        .execute()
-    print("Alte Kurse gelöscht.")
-
-    # Neue Kurse einfügen
-    supabase.table("courses").insert(courses).execute()
-    print(f"✓ {len(courses)} Kurse gespeichert")
-
-    # Preisverlauf speichern
-    for course_type in ["langgymi", "kurzgymi"]:
-        typed = [c for c in courses if c["course_type"] == course_type and c["price_chf"]]
-        if typed:
-            avg_price = round(sum(c["price_chf"] for c in typed) / len(typed))
-            supabase.table("price_history").insert({
-                "provider_id": PROVIDER_ID,
-                "course_type": course_type,
-                "price_chf":   avg_price,
-                "recorded_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            }).execute()
-            print(f"✓ price_history: Provider {PROVIDER_ID} | {course_type} | CHF {avg_price}")
-
-
+# MAIN
 def main():
-    try:
-        job_id = trigger_scraper()
-        raw_data = wait_for_results(job_id)
-        courses = transform_courses(raw_data)
-        print(f"  {len(courses)} Kurse transformiert")
-        save_to_supabase(courses)
-        print("\nAvidii Bright Data Scraping abgeschlossen!")
+    print(f"Starte {PROVIDER_NAME} Scraper (Bright Data)...")
 
-    except Exception as e:
-        print(f"Fehler: {e}")
+    if not BRIGHT_DATA_API_TOKEN or not COLLECTOR_ID:
+        print("  ✗ BRIGHT_DATA_API_TOKEN oder BRIGHT_DATA_COLLECTOR_ID_AVIDII fehlt in .env")
+        return
+
+    with ScrapeRun(SCRAPER_METHOD, PROVIDER_ID) as run:
+        # 1. Bright Data Job triggern
+        try:
+            job_id = trigger_scraper()
+        except Exception as e:
+            msg = f"Trigger fehlgeschlagen: {e}"
+            print(f"  ✗ {msg}")
+            log_scrape_error(run.id, PROVIDER_ID, "TRIGGER_ERROR", msg)
+            run.error_count += 1
+            return
+
+        # 2. Auf Ergebnisse warten
+        try:
+            raw_data = wait_for_results(job_id)
+        except Exception as e:
+            msg = f"Warten auf Ergebnisse fehlgeschlagen: {e}"
+            print(f"  ✗ {msg}")
+            log_scrape_error(run.id, PROVIDER_ID, "TIMEOUT_ERROR", msg)
+            run.error_count += 1
+            return
+
+        # 3. Kurse transformieren
+        try:
+            courses = transform_courses(raw_data)
+            print(f"  → {len(courses)} Kurs(e) transformiert")
+        except Exception as e:
+            msg = f"Transformation fehlgeschlagen: {e}"
+            print(f"  ✗ {msg}")
+            log_scrape_error(run.id, PROVIDER_ID, "TRANSFORM_ERROR", msg)
+            run.error_count += 1
+            return
+
+        # 4. Alte BD-Kurse löschen, neue speichern
+        try:
+            supabase.table("courses").delete() \
+                .eq("provider_id", PROVIDER_ID) \
+                .eq("scraper_method", SCRAPER_METHOD) \
+                .execute()
+            print("  Alte Bright-Data-Kurse gelöscht.")
+
+            if courses:
+                supabase.table("courses").insert(courses).execute()
+                run.courses_found = len(courses)
+                print(f"  ✓ {len(courses)} Kurs(e) gespeichert")
+
+                # price_history pro course_type
+                for course_type in ("langgymi", "kurzgymi"):
+                    typed = [c for c in courses
+                             if c["course_type"] == course_type and c["price_chf"]]
+                    if typed:
+                        avg = round(sum(c["price_chf"] for c in typed) / len(typed))
+                        record_price_history(PROVIDER_ID, course_type, avg)
+            else:
+                log_scrape_error(run.id, PROVIDER_ID, "NO_COURSES_FOUND",
+                                 "Keine Kurse von Bright Data erhalten.")
+                run.error_count += 1
+
+        except Exception as e:
+            msg = f"DB-Insert fehlgeschlagen: {e}"
+            print(f"  ✗ {msg}")
+            log_scrape_error(run.id, PROVIDER_ID, "INSERT_ERROR", msg)
+            run.error_count += 1
+
+    print(f"\n✓ {PROVIDER_NAME} Bright Data abgeschlossen")
 
 
 if __name__ == "__main__":

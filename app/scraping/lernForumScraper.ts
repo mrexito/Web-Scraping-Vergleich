@@ -174,8 +174,10 @@ async function scrapeCoursesFromPage(page: Page, pageUrl: string, courseType: st
 
 async function scrapeLernForum(): Promise<void> {
   let browser: Browser | null = null;
+  let coursesFound = 0;
+  let errorCount = 0;
 
-  const runId = await startScrapeRun();
+  const runId = await startScrapeRun('puppeteer', PROVIDER_ID);
   if (!runId) { console.error('Konnte keinen Scrape-Run starten. Abbruch.'); return; }
 
   try {
@@ -203,6 +205,7 @@ async function scrapeLernForum(): Promise<void> {
     if (metaError) {
       console.error('Fehler beim Aktualisieren der GymiProviders Metadaten:', metaError.message);
       await logScrapeError(runId, PROVIDER_ID, 'METADATA_ERROR', metaError.message);
+      errorCount++;
     } else {
       console.log('✓ GymiProviders Metadaten aktualisiert');
     }
@@ -219,6 +222,7 @@ async function scrapeLernForum(): Promise<void> {
     if (detailError) {
       console.error('Fehler beim Aktualisieren der CourseDetails Metadaten:', detailError.message);
       await logScrapeError(runId, PROVIDER_ID, 'METADATA_ERROR', detailError.message);
+      errorCount++;
     } else {
       console.log('✓ CourseDetails Metadaten aktualisiert');
     }
@@ -240,6 +244,7 @@ async function scrapeLernForum(): Promise<void> {
 
         if (courses.length === 0) {
           await logScrapeError(runId, PROVIDER_ID, 'NO_COURSES_FOUND', `Keine Kurse gefunden auf ${entry.url}`);
+          errorCount++;
           continue;
         }
 
@@ -247,8 +252,10 @@ async function scrapeLernForum(): Promise<void> {
         if (error) {
           console.error('Fehler beim Speichern:', error.message);
           await logScrapeError(runId, PROVIDER_ID, 'INSERT_ERROR', error.message);
+          errorCount++;
         } else {
           console.log(`✓ ${courses.length} Kurs(e) gespeichert`);
+          coursesFound += courses.length;
           courses.slice(0, 3).forEach((c: any) => {
             console.log(`  -> "${c.title.substring(0, 60)}..." | CHF ${c.price_chf ?? 'N/A'} | ${c.location} | ${c.verfuegbarkeit ?? 'N/A'}`);
           });
@@ -266,17 +273,20 @@ async function scrapeLernForum(): Promise<void> {
       } catch (err: any) {
         console.error(`Fehler beim Scraping von ${entry.url}:`, err.message);
         await logScrapeError(runId, PROVIDER_ID, 'SCRAPING_ERROR', err.message);
+        errorCount++;
       } finally {
         if (page) await page.close();
       }
     }
 
-    await finishScrapeRun(runId, 'success');
-    console.log(`\n${PROVIDER_NAME} Scraping abgeschlossen!`);
+    const finalStatus = errorCount === 0 ? 'success' : (coursesFound > 0 ? 'partial' : 'failed');
+    await finishScrapeRun(runId, finalStatus, coursesFound, errorCount);
+    console.log(`\n${PROVIDER_NAME} Scraping abgeschlossen! (${coursesFound} Kurse, ${errorCount} Fehler)`);
 
   } catch (err: any) {
     console.error('Allgemeiner Fehler:', err.message);
-    await finishScrapeRun(runId, 'error');
+    errorCount++;
+    await finishScrapeRun(runId, 'failed', coursesFound, errorCount);
   } finally {
     if (browser) await browser.close();
     console.log('Browser geschlossen.');
