@@ -5,6 +5,20 @@ import { parseCourseDetails } from '@/schemas/courseDetailSchema';
 import { parseCourses } from '@/schemas/courseSchema';
 import { transformProviders } from '@/utils/transformProviders';
 
+/**
+ * Primäre Scraping-Methode für die User-Ansicht.
+ *
+ * Begründung: ScrapeGraphAI ist die einzige Methode, die alle 12 Anbieter
+ * abdeckt. Puppeteer und Bright Data sind aktuell nur für 2 Anbieter
+ * implementiert (Avidii, Gymivorbereitung Zürich) und würden zu Doubletten
+ * im UI führen.
+ *
+ * Falls künftig eine andere Methode alle Anbieter abdeckt (z.B. nach
+ * vollständiger Puppeteer-Implementation), kann hier zentral umgeschaltet
+ * werden — ohne Änderungen an einzelnen Komponenten.
+ */
+const PRIMARY_SCRAPER_METHOD = 'scrapegraphai' as const;
+
 const UtilityAnalysis = async () => {
   const supabase = await createServerSupabaseClient();
 
@@ -41,7 +55,8 @@ const UtilityAnalysis = async () => {
         `provider_id, title, price_chf, price_regular_chf, discount_valid_until,
          course_type, location, occurrence, course_time, start_date, end_date,
          verfuegbarkeit, is_online, course_url`
-      ),
+      )
+      .eq('scraper_method', PRIMARY_SCRAPER_METHOD),
   ]);
 
   if (errorProviders) console.error('Fehler beim Laden der GymiProviders:', errorProviders);
