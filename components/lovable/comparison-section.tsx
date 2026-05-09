@@ -1,7 +1,6 @@
 ﻿"use client";
 import { useMemo, useState } from "react";
 import { LayoutGrid, List as ListIcon } from "lucide-react";
-import { providers as ALL } from "@/lib/mock-providers";
 import type { Provider } from "@/lib/mock-providers";
 import { ProviderCard } from "./provider-card";
 import { ProviderSheet } from "./provider-sheet";
@@ -10,13 +9,13 @@ import { cn } from "@/lib/utils";
 
 type Sort = "score" | "price" | "name";
 
-export function ComparisonSection() {
+export function ComparisonSection({ providers }: { providers: Provider[] }) {
   const [sort, setSort] = useState<Sort>("score");
   const [view, setView] = useState<"grid" | "list">("grid");
   const [active, setActive] = useState<Provider | null>(null);
 
   const sorted = useMemo(() => {
-    const arr = [...ALL];
+    const arr = [...providers];
     arr.sort((a, b) => {
       if (sort === "score") return b.score - a.score;
       if (sort === "price") return (a.price ?? Infinity) - (b.price ?? Infinity);

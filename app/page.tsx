@@ -1,19 +1,19 @@
-import { Hero } from '@/components/lovable/hero';
+﻿import { Hero } from '@/components/lovable/hero';
 import { ComparisonSection } from '@/components/lovable/comparison-section';
+import { adaptProviders } from '@/utils/adaptProviders';
 import { createServerSupabaseClient } from '@/utils/supabase/server';
 import { parseGymiProviders } from '@/schemas/gymiProviderSchema';
 import { parseCourseDetails } from '@/schemas/courseDetailSchema';
 import { parseCourses } from '@/schemas/courseSchema';
-import { transformProviders } from '@/utils/transformProviders';
 
 const PRIMARY_SCRAPER_METHOD = 'scrapegraphai' as const;
 
-const UtilityAnalysis = async () => {
+const HomePage = async () => {
   const supabase = await createServerSupabaseClient();
   const [
-    { data: rawProviders, error: errorProviders },
-    { data: rawCourseDetails, error: errorCourseDetails },
-    { data: rawCourses, error: errorCourses },
+    { data: rawProviders },
+    { data: rawCourseDetails },
+    { data: rawCourses },
   ] = await Promise.all([
     supabase
       .from('GymiProviders')
@@ -47,25 +47,22 @@ const UtilityAnalysis = async () => {
       .eq('scraper_method', PRIMARY_SCRAPER_METHOD),
   ]);
 
-  if (errorProviders) console.error('Fehler beim Laden der GymiProviders:', errorProviders);
-  if (errorCourseDetails) console.error('Fehler beim Laden der CourseDetails:', errorCourseDetails);
-  if (errorCourses) console.error('Fehler beim Laden der Courses:', errorCourses);
-
   const validProviders = parseGymiProviders(rawProviders ?? []);
   const validCourseDetails = parseCourseDetails(rawCourseDetails ?? []);
   const validCourses = parseCourses(rawCourses ?? []);
-  const transformedProviders = transformProviders(validProviders, validCourses, validCourseDetails);
+
+  const providers = adaptProviders(validProviders, validCourses, validCourseDetails);
 
   return (
     <>
       <Hero
-        providerCount={transformedProviders.length}
+        providerCount={providers.length}
         courseCount={validCourses.length}
         lastUpdated={new Date()}
       />
-      <ComparisonSection />
+      <ComparisonSection providers={providers} />
     </>
   );
 };
 
-export default UtilityAnalysis;
+export default HomePage;
