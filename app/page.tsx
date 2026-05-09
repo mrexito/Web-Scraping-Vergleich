@@ -1,4 +1,5 @@
 import UtilityAnalysisInteraction from '../components/UtilityAnalysisInteraction';
+import { Hero } from '@/components/lovable/hero';
 import { createServerSupabaseClient } from '@/utils/supabase/server';
 import { parseGymiProviders } from '@/schemas/gymiProviderSchema';
 import { parseCourseDetails } from '@/schemas/courseDetailSchema';
@@ -21,7 +22,6 @@ const PRIMARY_SCRAPER_METHOD = 'scrapegraphai' as const;
 
 const UtilityAnalysis = async () => {
   const supabase = await createServerSupabaseClient();
-
   const [
     { data: rawProviders, error: errorProviders },
     { data: rawCourseDetails, error: errorCourseDetails },
@@ -65,19 +65,26 @@ const UtilityAnalysis = async () => {
 
   const validProviders = parseGymiProviders(rawProviders ?? []);
   const validCourseDetails = parseCourseDetails(rawCourseDetails ?? []);
-  const validCourses = parseCourses(rawCourses ?? []); 
+  const validCourses = parseCourses(rawCourses ?? []);
   const transformedProviders = transformProviders(validProviders, validCourses, validCourseDetails);
 
   return (
-    <div className="container mx-auto px-4 sm:px-8">
-      <div className="py-8">
-        <UtilityAnalysisInteraction
-          GymiProviders={transformedProviders}
-          CourseDetails={validCourseDetails}
-          Courses={validCourses}
-        />
+    <>
+      <Hero
+        providerCount={transformedProviders.length}
+        courseCount={validCourses.length}
+        lastUpdated={new Date()}
+      />
+      <div id="nutzwertanalyse" className="container mx-auto px-4 sm:px-8">
+        <div className="py-8">
+          <UtilityAnalysisInteraction
+            GymiProviders={transformedProviders}
+            CourseDetails={validCourses.length > 0 ? validCourseDetails : validCourseDetails}
+            Courses={validCourses}
+          />
+        </div>
       </div>
-    </div>
+    </>
   );
 };
 
