@@ -4,6 +4,7 @@ import { LayoutGrid, List as ListIcon } from "lucide-react";
 import { providers as ALL } from "@/lib/mock-providers";
 import type { Provider } from "@/lib/mock-providers";
 import { ProviderCard } from "./provider-card";
+import { ProviderSheet } from "./provider-sheet";
 import { formatCHF } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -117,14 +118,7 @@ export function ComparisonSection() {
         </div>
       )}
 
-      {active && (
-        <div className="mt-4 rounded-lg border border-border bg-surface p-4 text-sm text-muted-foreground">
-          Detail-Sheet für <strong>{active.name}</strong> kommt in Phase 3c.{" "}
-          <button onClick={() => setActive(null)} className="text-primary hover:underline">
-            Schliessen
-          </button>
-        </div>
-      )}
+      <ProviderSheet provider={active} onClose={() => setActive(null)} />
     </section>
   );
 }
