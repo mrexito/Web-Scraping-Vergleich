@@ -1,13 +1,14 @@
 import { Header } from '@/components/lovable/header';
+import { Footer } from '@/components/lovable/footer';
 
-export default function PreviewHeaderPage() {
+export default function PreviewLayoutPage() {
   return (
     <>
       <Header />
 
       <main className="mx-auto w-full max-w-[1280px] px-6 py-12 lg:px-12">
 
-        {/* Sektion 1: Hero-ähnlicher Test-Bereich */}
+        {/* Test 1: Hero-ähnlicher Bereich */}
         <section className="mb-16">
           <p className="mb-2 text-xs font-mono text-muted-foreground uppercase tracking-widest">
             Test 1 — Header über Hero-Content
@@ -23,7 +24,7 @@ export default function PreviewHeaderPage() {
           </p>
         </section>
 
-        {/* Sektion 2: Light/Dark Token-Test */}
+        {/* Test 2: Light/Dark Token-Check */}
         <section className="mb-16">
           <p className="mb-2 text-xs font-mono text-muted-foreground uppercase tracking-widest">
             Test 2 — Token-Check Light / Dark
@@ -47,14 +48,14 @@ export default function PreviewHeaderPage() {
           </p>
         </section>
 
-        {/* Sektion 3: Active-State Test */}
+        {/* Test 3: Active-State Navigation */}
         <section className="mb-16">
           <p className="mb-2 text-xs font-mono text-muted-foreground uppercase tracking-widest">
             Test 3 — Active-State Navigation
           </p>
           <div className="rounded-lg border border-border bg-surface p-4">
             <p className="text-sm text-foreground mb-2">
-              Du bist aktuell auf <code className="bg-muted px-1 rounded text-xs">/preview-header</code>.
+              Du bist aktuell auf <code className="bg-muted px-1 rounded text-xs">/preview-layout</code>.
               Diese Route ist nicht in der Nav — kein Item sollte aktiv sein.
             </p>
             <p className="text-sm text-muted-foreground">
@@ -64,8 +65,8 @@ export default function PreviewHeaderPage() {
           </div>
         </section>
 
-        {/* Langer Dummy-Content zum Testen des Scroll-Effekts */}
-        <section>
+        {/* Test 4: Scroll-Effekt */}
+        <section className="mb-16">
           <p className="mb-4 text-xs font-mono text-muted-foreground uppercase tracking-widest">
             Test 4 — Scroll-Effekt (Header-Backdrop)
           </p>
@@ -76,14 +77,32 @@ export default function PreviewHeaderPage() {
             <code className="bg-muted px-1 rounded text-xs mx-1">bg-background/80</code>
             wechseln und der Border sichtbar werden.
           </p>
-          {Array.from({ length: 12 }).map((_, i) => (
+          {Array.from({ length: 8 }).map((_, i) => (
             <div key={i} className="mb-4 h-16 rounded-lg bg-surface border border-border flex items-center px-4">
               <span className="text-sm text-muted-foreground">Scroll-Platzhalter {i + 1}</span>
             </div>
           ))}
         </section>
 
+        {/* Test 5: Footer */}
+        <section className="mb-16">
+          <p className="mb-4 text-xs font-mono text-muted-foreground uppercase tracking-widest">
+            Test 5 — Footer
+          </p>
+          <div className="rounded-lg border border-border bg-surface p-4">
+            <p className="text-sm text-foreground mb-2">Der Footer erscheint direkt unterhalb dieser Sektion.</p>
+            <p className="text-sm text-muted-foreground">
+              → Prüfe: 3-Spalten-Grid auf Desktop, gestapelt auf Mobile.
+              Links in Spalte "Seiten" müssen navigierbar sein.
+              Copyright-Jahr muss dynamisch korrekt sein.
+              Im Dark Mode: bg-surface/40 und border-border korrekt?
+            </p>
+          </div>
+        </section>
+
       </main>
+
+      <Footer />
     </>
   );
 }
