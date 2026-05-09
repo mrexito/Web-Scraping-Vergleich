@@ -1,6 +1,6 @@
 ﻿import { Hero } from '@/components/lovable/hero';
 import { ComparisonSection } from '@/components/lovable/comparison-section';
-import { adaptProviders } from '@/utils/adaptProviders';
+import { adaptProviders, parseWeightsFromString } from '@/utils/adaptProviders';
 import { createServerSupabaseClient } from '@/utils/supabase/server';
 import { parseGymiProviders } from '@/schemas/gymiProviderSchema';
 import { parseCourseDetails } from '@/schemas/courseDetailSchema';
@@ -8,7 +8,10 @@ import { parseCourses } from '@/schemas/courseSchema';
 
 const PRIMARY_SCRAPER_METHOD = 'scrapegraphai' as const;
 
-const HomePage = async () => {
+const HomePage = async ({ searchParams }: { searchParams: Promise<{ w?: string }> }) => {
+  const params = await searchParams;
+  const weights = parseWeightsFromString(params.w);
+
   const supabase = await createServerSupabaseClient();
   const [
     { data: rawProviders },
@@ -51,7 +54,7 @@ const HomePage = async () => {
   const validCourseDetails = parseCourseDetails(rawCourseDetails ?? []);
   const validCourses = parseCourses(rawCourses ?? []);
 
-  const providers = adaptProviders(validProviders, validCourses, validCourseDetails);
+  const providers = adaptProviders(validProviders, validCourses, validCourseDetails, weights);
 
   return (
     <>

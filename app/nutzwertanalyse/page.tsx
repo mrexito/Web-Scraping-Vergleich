@@ -219,7 +219,9 @@ export default function NutzwertanalysePage() {
       {/* CTA */}
       <section className="mt-10 flex flex-col items-start gap-2">
         <a
-          href={total === 100 ? "/#vergleich" : undefined}
+          href={total === 100
+            ? `/?w=${weights.price},${weights.quality},${weights.location},${weights.flex},${weights.services},${weights.digital}#vergleich`
+            : undefined}
           aria-disabled={total !== 100}
           className={cn(
             "inline-flex items-center gap-2 rounded-[10px] px-5 py-3 text-sm font-medium transition-all",

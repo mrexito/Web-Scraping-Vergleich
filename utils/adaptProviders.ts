@@ -3,6 +3,42 @@ import type { Course as DbCourse } from '@/schemas/courseSchema';
 import type { CourseDetail } from '@/schemas/courseDetailSchema';
 import type { Provider, Course as ProviderCourse, Availability } from '@/lib/mock-providers';
 
+export interface CriteriaWeights {
+  price: number;
+  quality: number;
+  location: number;
+  flex: number;
+  services: number;
+  digital: number;
+}
+
+export const DEFAULT_WEIGHTS: CriteriaWeights = {
+  price: 17,
+  quality: 17,
+  location: 16,
+  flex: 17,
+  services: 17,
+  digital: 16,
+};
+
+export function parseWeightsFromString(raw: string | undefined): CriteriaWeights {
+  if (!raw) return DEFAULT_WEIGHTS;
+  const parts = raw.split(',').map((s) => Number(s.trim()));
+  if (parts.length !== 6 || parts.some((n) => isNaN(n))) return DEFAULT_WEIGHTS;
+  return {
+    price: parts[0],
+    quality: parts[1],
+    location: parts[2],
+    flex: parts[3],
+    services: parts[4],
+    digital: parts[5],
+  };
+}
+
+export function serializeWeights(w: CriteriaWeights): string {
+  return [w.price, w.quality, w.location, w.flex, w.services, w.digital].join(',');
+}
+
 function mapAvailability(courses: DbCourse[]): Availability {
   if (courses.some((c) => c.verfuegbarkeit === 'viele')) return 'viele_plaetze';
   if (courses.some((c) => c.verfuegbarkeit === 'wenige')) return 'wenige_plaetze';
@@ -40,12 +76,21 @@ function uniqueTeachingDays(courses: DbCourse[]): string[] {
   return order.filter((d) => days.has(d));
 }
 
-function calculateScore(
+interface SubScores {
+  price: number;
+  quality: number;
+  location: number;
+  flex: number;
+  services: number;
+  digital: number;
+}
+
+function calculateSubScores(
   provider: GymiProvider,
   detail: CourseDetail | undefined,
   providerCourses: DbCourse[],
   priceRangeContext: { minPrice: number; maxPrice: number },
-): number {
+): SubScores {
   const price = provider['Preis Langzeit Kurs'] ?? provider['Preis Intensiver Kurs'] ?? null;
   let priceScore = 0.5;
   if (price !== null && priceRangeContext.maxPrice > priceRangeContext.minPrice) {
@@ -57,39 +102,52 @@ function calculateScore(
   const locCount = uniqueLocations(providerCourses).length;
   const locScore = Math.min(1, locCount / 5);
 
-  const hasFlexBools = [
+  const flexBools = [
     providerCourses.some((c) => c.is_online === true),
     detail?.['Unterstuezung ausserhalb Unterrichtszeit'] ?? false,
   ];
-  const flexScore = hasFlexBools.filter(Boolean).length / hasFlexBools.length;
+  const flexScore = flexBools.filter(Boolean).length / flexBools.length;
 
-  const hasServiceBools = [
+  const serviceBools = [
     provider.Einstufungstest,
     provider.Aufsatzkorrektur,
     detail?.Beratungsgespraech ?? false,
     detail?.['Eigene Lernunterlagen'] ?? false,
     detail?.Pruefungsarchiv ?? false,
   ];
-  const serviceScore = hasServiceBools.filter(Boolean).length / hasServiceBools.length;
+  const serviceScore = serviceBools.filter(Boolean).length / serviceBools.length;
 
-  const hasDigitalBools = [provider['E-Learning'], provider.Onlinepruefung];
-  const digitalScore = hasDigitalBools.filter(Boolean).length / hasDigitalBools.length;
+  const digitalBools = [provider['E-Learning'], provider.Onlinepruefung];
+  const digitalScore = digitalBools.filter(Boolean).length / digitalBools.length;
 
-  const total =
-    0.20 * priceScore +
-    0.20 * qualityScore +
-    0.15 * locScore +
-    0.15 * flexScore +
-    0.15 * serviceScore +
-    0.15 * digitalScore;
+  return {
+    price: priceScore,
+    quality: qualityScore,
+    location: locScore,
+    flex: flexScore,
+    services: serviceScore,
+    digital: digitalScore,
+  };
+}
 
-  return Math.round(total * 100);
+function applyWeights(sub: SubScores, w: CriteriaWeights): number {
+  const totalWeight = w.price + w.quality + w.location + w.flex + w.services + w.digital;
+  if (totalWeight === 0) return 0;
+  const weighted =
+    (w.price / totalWeight) * sub.price +
+    (w.quality / totalWeight) * sub.quality +
+    (w.location / totalWeight) * sub.location +
+    (w.flex / totalWeight) * sub.flex +
+    (w.services / totalWeight) * sub.services +
+    (w.digital / totalWeight) * sub.digital;
+  return Math.round(weighted * 100);
 }
 
 export function adaptProviders(
   providers: GymiProvider[],
   courses: DbCourse[],
   courseDetails: CourseDetail[],
+  weights: CriteriaWeights = DEFAULT_WEIGHTS,
 ): Provider[] {
   const allPrices = providers
     .map((p) => p['Preis Langzeit Kurs'] ?? p['Preis Intensiver Kurs'])
@@ -124,7 +182,8 @@ export function adaptProviders(
         : 'viele_plaetze',
     }));
 
-    const score = calculateScore(provider, detail, providerCourses, priceCtx);
+    const sub = calculateSubScores(provider, detail, providerCourses, priceCtx);
+    const score = applyWeights(sub, weights);
 
     return {
       id: String(provider.ID),
