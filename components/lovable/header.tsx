@@ -15,10 +15,11 @@ import {
 } from '@/components/ui/sheet';
 
 const navItems = [
-  { href: '/', label: 'Vergleich' },
-  { href: '/zap-info', label: 'ZAP-Info' },
-  { href: '/about', label: 'Über uns' },
-  { href: '/contact', label: 'Kontakt' },
+  { href: "/", label: "Vergleich" },
+  { href: "/nutzwertanalyse", label: "Nutzwertanalyse" },
+  { href: "/zap-info", label: "ZAP-Info" },
+  { href: "/about", label: "Über uns" },
+  { href: "/contact", label: "Kontakt" },
 ] as const;
 
 export function Header() {

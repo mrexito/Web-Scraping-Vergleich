@@ -1,4 +1,3 @@
-import UtilityAnalysisInteraction from '../components/UtilityAnalysisInteraction';
 import { Hero } from '@/components/lovable/hero';
 import { ComparisonSection } from '@/components/lovable/comparison-section';
 import { createServerSupabaseClient } from '@/utils/supabase/server';
@@ -64,15 +63,6 @@ const UtilityAnalysis = async () => {
         courseCount={validCourses.length}
         lastUpdated={new Date()}
       />
-      <div id="nutzwertanalyse" className="container mx-auto px-4 sm:px-8">
-        <div className="py-8">
-          <UtilityAnalysisInteraction
-            GymiProviders={transformedProviders}
-            CourseDetails={validCourseDetails}
-            Courses={validCourses}
-          />
-        </div>
-      </div>
       <ComparisonSection />
     </>
   );
