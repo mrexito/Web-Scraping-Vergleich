@@ -188,8 +188,6 @@ export function adaptProviders(
     return {
       id: String(provider.ID),
       name: provider.Name,
-      shortDescription: `Gymi-Vorbereitungsanbieter im Kanton Zürich mit ${locations.length || 'mehreren'} Standorten.`,
-      shortDescriptionEn: `Gymi prep provider in Canton Zürich with ${locations.length || 'multiple'} locations.`,
       logoUrl: null,
       score,
       price: provider['Preis Langzeit Kurs'] ?? provider['Preis Intensiver Kurs'] ?? null,

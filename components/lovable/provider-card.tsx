@@ -1,9 +1,8 @@
 ﻿'use client';
 import {ArrowRight, Calendar, MapPin, Wallet, Users} from 'lucide-react';
-import {useLocale, useTranslations} from 'next-intl';
+import {useTranslations} from 'next-intl';
 import type {Provider} from '@/lib/mock-providers';
 import {formatCHF} from '@/lib/format';
-import {gradientFor} from '@/lib/avatar';
 import {cn} from '@/lib/utils';
 
 function ScoreDots({score}: {score: number}) {
@@ -43,15 +42,9 @@ export function ProviderCard({
   onOpen: () => void;
 }) {
   const t = useTranslations();
-  const locale = useLocale();
-
-  const description = locale === 'en' && provider.shortDescriptionEn
-    ? provider.shortDescriptionEn
-    : provider.shortDescription;
 
   const locs = provider.locations.slice(0, 2).join(', ');
   const more = provider.locations.length > 2 ? ` +${provider.locations.length - 2}` : '';
-  const gradient = gradientFor(provider.name);
 
   const availKey = provider.availability;
   const availText = t(`avail.${availKey}`);
@@ -65,16 +58,10 @@ export function ProviderCard({
       )}
     >
       <div className="flex items-start justify-between gap-4">
-        <div
-          className={cn(
-            'grid h-12 w-12 place-items-center rounded-full bg-gradient-to-br text-base font-semibold text-white shadow-sm',
-            gradient,
-          )}
-          aria-hidden
-        >
-          {provider.name.charAt(0)}
-        </div>
-        <div className="text-right">
+        <h3 className="text-lg font-semibold tracking-tight pr-4">
+          {provider.name}
+        </h3>
+        <div className="text-right shrink-0">
           <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
             {t('card.score')}
           </div>
@@ -86,11 +73,6 @@ export function ProviderCard({
           </div>
         </div>
       </div>
-
-      <h3 className="mt-5 text-lg font-semibold tracking-tight">{provider.name}</h3>
-      <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-        {description}
-      </p>
 
       <div className="my-5 h-px bg-border" />
 

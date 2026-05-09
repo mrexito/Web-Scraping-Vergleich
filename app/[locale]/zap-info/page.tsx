@@ -2,7 +2,7 @@
 import {getTranslations, setRequestLocale} from 'next-intl/server';
 import {PageShell} from '@/components/lovable/page-shell';
 import {createServerSupabaseClient} from '@/utils/supabase/server';
-import {parseZapInfos, type ZapInfo, type ZapInfoScope} from '@/schemas/zapInfoSchema';
+import {parseZapInfos, type ZapInfo} from '@/schemas/zapInfoSchema';
 
 export async function generateMetadata({
   params,
@@ -38,6 +38,14 @@ function ZapEntry({
   const regEnd = formatDate(info.registration_end, locale);
   const examDate = formatDate(info.exam_date, locale);
   const lastVerified = formatDate(info.last_verified_at, locale);
+
+  const subjectsToShow = locale === 'en' && info.exam_subjects_en && info.exam_subjects_en.length > 0
+    ? info.exam_subjects_en
+    : info.exam_subjects;
+
+  const notesToShow = locale === 'en' && info.notes_en
+    ? info.notes_en
+    : info.notes;
 
   const scopeKey = info.scope === 'k_und_s'
     ? 'scopeKundS'
@@ -94,13 +102,13 @@ function ZapEntry({
         )}
       </dl>
 
-      {info.exam_subjects && info.exam_subjects.length > 0 && (
+      {subjectsToShow && subjectsToShow.length > 0 && (
         <section className="mt-6">
           <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             {t('examParts')}
           </h4>
           <ul className="mt-3 space-y-2">
-            {info.exam_subjects.map((subject, i) => (
+            {subjectsToShow.map((subject, i) => (
               <li
                 key={i}
                 className="flex items-center justify-between rounded-lg border border-border bg-surface/40 px-3 py-2 text-sm"
@@ -115,9 +123,9 @@ function ZapEntry({
         </section>
       )}
 
-      {info.notes && (
+      {notesToShow && (
         <p className="mt-5 rounded-lg border border-border bg-surface/40 px-3 py-2.5 text-xs leading-relaxed text-muted-foreground">
-          {info.notes}
+          {notesToShow}
         </p>
       )}
 

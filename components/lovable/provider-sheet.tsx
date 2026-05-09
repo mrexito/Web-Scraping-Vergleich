@@ -1,7 +1,7 @@
 ﻿"use client";
 import {Check, ExternalLink, Star, X} from 'lucide-react';
 import {useEffect} from 'react';
-import {useLocale, useTranslations} from 'next-intl';
+import {useTranslations} from 'next-intl';
 import type {Provider} from '@/lib/mock-providers';
 import {formatCHF} from '@/lib/format';
 import {cn} from '@/lib/utils';
@@ -63,7 +63,6 @@ export function ProviderSheet({
   onClose: () => void;
 }) {
   const t = useTranslations();
-  const locale = useLocale();
 
   useEffect(() => {
     if (!provider) return;
@@ -77,12 +76,6 @@ export function ProviderSheet({
   }, [provider, onClose]);
 
   const open = !!provider;
-
-  const description = provider
-    ? (locale === 'en' && provider.shortDescriptionEn
-        ? provider.shortDescriptionEn
-        : provider.shortDescription)
-    : '';
 
   return (
     <>
@@ -108,7 +101,6 @@ export function ProviderSheet({
             <div className="flex items-start justify-between gap-4 border-b border-border px-7 py-5">
               <div>
                 <h2 className="text-2xl font-semibold tracking-tight">{provider.name}</h2>
-                <p className="mt-1 text-sm text-muted-foreground">{description}</p>
               </div>
               <button
                 onClick={onClose}
