@@ -1,23 +1,12 @@
 import UtilityAnalysisInteraction from '../components/UtilityAnalysisInteraction';
 import { Hero } from '@/components/lovable/hero';
+import { ComparisonSection } from '@/components/lovable/comparison-section';
 import { createServerSupabaseClient } from '@/utils/supabase/server';
 import { parseGymiProviders } from '@/schemas/gymiProviderSchema';
 import { parseCourseDetails } from '@/schemas/courseDetailSchema';
 import { parseCourses } from '@/schemas/courseSchema';
 import { transformProviders } from '@/utils/transformProviders';
 
-/**
- * Primäre Scraping-Methode für die User-Ansicht.
- *
- * Begründung: ScrapeGraphAI ist die einzige Methode, die alle 12 Anbieter
- * abdeckt. Puppeteer und Bright Data sind aktuell nur für 2 Anbieter
- * implementiert (Avidii, Gymivorbereitung Zürich) und würden zu Doubletten
- * im UI führen.
- *
- * Falls künftig eine andere Methode alle Anbieter abdeckt (z.B. nach
- * vollständiger Puppeteer-Implementation), kann hier zentral umgeschaltet
- * werden — ohne Änderungen an einzelnen Komponenten.
- */
 const PRIMARY_SCRAPER_METHOD = 'scrapegraphai' as const;
 
 const UtilityAnalysis = async () => {
@@ -79,11 +68,12 @@ const UtilityAnalysis = async () => {
         <div className="py-8">
           <UtilityAnalysisInteraction
             GymiProviders={transformedProviders}
-            CourseDetails={validCourses.length > 0 ? validCourseDetails : validCourseDetails}
+            CourseDetails={validCourseDetails}
             Courses={validCourses}
           />
         </div>
       </div>
+      <ComparisonSection />
     </>
   );
 };
