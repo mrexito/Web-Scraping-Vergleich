@@ -1,7 +1,12 @@
+@import "tailwindcss";
 @import "@flaticon/flaticon-uicons/css/all/all.css";
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+
+@theme {
+  --color-background:           hsl(var(--background));
+  --color-foreground:           hsl(var(--foreground));
+  --color-btn-background:       hsl(var(--btn-background));
+  --color-btn-background-hover: hsl(var(--btn-background-hover));
+}
 
 @layer base {
   :root {
@@ -13,7 +18,5 @@
 }
 
 @layer base {
-  * {
-    @apply border-foreground/20;
-  }
+  * { @apply border-foreground/20; }
 }
