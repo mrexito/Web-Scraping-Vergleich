@@ -1,25 +1,34 @@
-﻿import { Mail } from 'lucide-react';
-import { PageShell } from '@/components/lovable/page-shell';
+﻿import {Mail} from 'lucide-react';
+import {getTranslations, setRequestLocale} from 'next-intl/server';
+import {PageShell} from '@/components/lovable/page-shell';
 
-export const metadata = {
-  title: 'Über uns | Vergleich Gymi-Vorbereitungskurse',
-  description: 'Bachelor-Thesis-Projekt der Berner Fachhochschule — Wirtschaftsinformatik.',
-};
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{locale: string}>;
+}) {
+  const {locale} = await params;
+  const t = await getTranslations({locale, namespace: 'metadata'});
+  return {
+    title: t('aboutTitle'),
+    description: t('aboutDescription'),
+  };
+}
 
 const TECH = [
-  "Next.js",
-  "TypeScript",
-  "Tailwind",
-  "Supabase",
-  "ScrapeGraphAI",
-  "Gemini 2.5 Flash",
-  "Puppeteer",
-  "Bright Data",
-  "Zod",
-  "Zustand",
+  'Next.js',
+  'TypeScript',
+  'Tailwind',
+  'Supabase',
+  'ScrapeGraphAI',
+  'Gemini 2.5 Flash',
+  'Puppeteer',
+  'Bright Data',
+  'Zod',
+  'Zustand',
 ];
 
-function Block({ title, body }: { title: string; body: string }) {
+function Block({title, body}: {title: string; body: string}) {
   return (
     <section>
       <h2 className="text-xl font-semibold tracking-tight">{title}</h2>
@@ -28,51 +37,41 @@ function Block({ title, body }: { title: string; body: string }) {
   );
 }
 
-export default function AboutPage() {
+export default async function AboutPage({
+  params,
+}: {
+  params: Promise<{locale: string}>;
+}) {
+  const {locale} = await params;
+  setRequestLocale(locale);
+  const t = await getTranslations({locale, namespace: 'about'});
+
   return (
-    <PageShell title="Über uns">
+    <PageShell title={t('title')}>
       <div className="mt-10 grid gap-10 lg:grid-cols-5">
         <div className="space-y-10 lg:col-span-3">
-          <Block
-            title="Das Projekt"
-            body="Dieses Vergleichsportal wurde im Rahmen einer Bachelorarbeit an der Berner Fachhochschule (BFH) entwickelt. 
-            Ziel ist es, Eltern und Schülerinnen und Schülern dabei zu unterstützen, den passenden Gymi-Vorbereitungskurs im Kanton Zürich zu finden."
-          />
-          <Block
-            title="Wie funktioniert der Vergleich?"
-            body="Das Portal verwendet eine gewichtete Nutzwertanalyse (Multi-Criteria Decision Analysis). 
-            Nutzerinnen und Nutzer können selbst festlegen, welche Kriterien ihnen besonders wichtig sind zum Beispiel Preis, Qualität, Flexibilität 
-            oder Standort. 
-            Basierend auf diesen Gewichtungen werden die Anbieter bewertet und nach Gesamtpunktzahl gerankt."
-          />
-          <Block
-            title="Datenaktualität"
-            body="Die Kursdaten werden automatisch über Web-Scraping von den Websites der Anbieter gesammelt und regelmässig aktualisiert. 
-            Ein KI-basierter Self-Healing-Mechanismus erkennt strukturelle Änderungen auf den Anbieter-Websites und passt die Scraper automatisch an. 
-            Alle Preisangaben dienen als Orientierung massgeblich sind stets die aktuellen Angaben auf den jeweiligen Anbieter-Websites."
-          />
-          <Block
-            title="Berner Fachhochschule"
-            body="Diese Arbeit entstand im Studiengang Wirtschaftsinformatik an der Berner Fachhochschule (BFH), Departement Wirtschaft."
-          />
+          <Block title={t('s1Title')} body={t('s1Body')} />
+          <Block title={t('s2Title')} body={t('s2Body')} />
+          <Block title={t('s3Title')} body={t('s3Body')} />
+          <Block title={t('s4Title')} body={t('s4Body')} />
         </div>
         <aside className="lg:col-span-2">
           <div className="rounded-2xl border border-border bg-card p-6 shadow-[var(--shadow-card)]">
             <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-              Technologie
+              {t('techTitle')}
             </h3>
             <div className="mt-4 flex flex-wrap gap-2">
-              {TECH.map((t) => (
+              {TECH.map((tech) => (
                 <span
-                  key={t}
+                  key={tech}
                   className="rounded-full border border-border bg-surface px-2.5 py-1 font-mono text-xs text-foreground"
                 >
-                  {t}
+                  {tech}
                 </span>
               ))}
             </div>
             <p className="mt-5 text-xs text-muted-foreground">
-              Bachelorarbeit · Berner Fachhochschule · 2026
+              {t('techFooter')}
             </p>
           </div>
         </aside>
@@ -84,7 +83,7 @@ export default function AboutPage() {
             T
           </div>
           <div className="mt-4 text-lg font-semibold">Tami</div>
-          <div className="mt-1 text-sm text-muted-foreground">Bachelor-Thesis · BFH Wirtschaftsinformatik</div>
+          <div className="mt-1 text-sm text-muted-foreground">{t('authorRole')}</div>
           <a
             href="mailto:martt8@bfh.ch"
             className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline"

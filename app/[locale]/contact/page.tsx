@@ -1,9 +1,10 @@
 ﻿"use client";
-import { useState } from 'react';
-import { Mail, Building2, GraduationCap } from 'lucide-react';
-import { PageShell } from '@/components/lovable/page-shell';
+import {useState} from 'react';
+import {Mail, Building2, GraduationCap} from 'lucide-react';
+import {useTranslations} from 'next-intl';
+import {PageShell} from '@/components/lovable/page-shell';
 
-function Row({ label, value }: { label: string; value: React.ReactNode }) {
+function Row({label, value}: {label: string; value: React.ReactNode}) {
   return (
     <div className="flex flex-col gap-0.5 border-t border-border py-3 sm:flex-row sm:items-center sm:gap-4">
       <div className="w-40 shrink-0 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -15,52 +16,47 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
 }
 
 export default function KontaktPage() {
-  const [form, setForm] = useState({ name: "", email: "", message: "" });
+  const t = useTranslations('contact');
+  const [form, setForm] = useState({name: '', email: '', message: ''});
   const [sent, setSent] = useState(false);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    const subject = encodeURIComponent(`Feedback Vergleichsportal — ${form.name}`);
+    const subject = encodeURIComponent(t('formSubject', {name: form.name}));
     const body = encodeURIComponent(
-      `Name: ${form.name}\nE-Mail: ${form.email}\n\nNachricht:\n${form.message}`
+      t('formBody', {name: form.name, email: form.email, message: form.message})
     );
     window.location.href = `mailto:martt8@bfh.ch?subject=${subject}&body=${body}`;
     setSent(true);
   };
 
   return (
-    <PageShell
-      title="Kontakt"
-      subtitle="Bei Fragen, Anregungen oder Feedback zum Vergleichsportal."
-    >
+    <PageShell title={t('title')} subtitle={t('subtitle')}>
       <div className="mx-auto mt-10 max-w-[720px]">
         <div className="rounded-2xl border border-border bg-card p-6 shadow-[var(--shadow-card)]">
-          <h3 className="text-base font-semibold">Bachelor Thesis</h3>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Vergleichsportal für Gymi-Vorbereitungskurse im Kanton Zürich — entwickelt im Rahmen
-            einer Bachelor Thesis an der Berner Fachhochschule.
-          </p>
+          <h3 className="text-base font-semibold">{t('projectTitle')}</h3>
+          <p className="mt-2 text-sm text-muted-foreground">{t('projectBody')}</p>
           <div className="mt-4">
             <Row
-              label="Institution"
+              label={t('rowInstitution')}
               value={
                 <span className="inline-flex items-center gap-2">
                   <Building2 className="h-4 w-4 text-muted-foreground" />
-                  Berner Fachhochschule (BFH)
+                  {t('rowInstitutionValue')}
                 </span>
               }
             />
             <Row
-              label="Studiengang"
+              label={t('rowProgram')}
               value={
                 <span className="inline-flex items-center gap-2">
                   <GraduationCap className="h-4 w-4 text-muted-foreground" />
-                  Wirtschaftsinformatik · Departement Wirtschaft
+                  {t('rowProgramValue')}
                 </span>
               }
             />
             <Row
-              label="E-Mail"
+              label={t('rowEmail')}
               value={
                 <a
                   href="mailto:martt8@bfh.ch"
@@ -75,52 +71,45 @@ export default function KontaktPage() {
         </div>
 
         <section className="mt-10">
-          <h2 className="text-xl font-semibold tracking-tight">Fehler melden</h2>
-          <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-            Falls du fehlerhafte oder veraltete Daten entdeckst, melde uns dies bitte über das
-            Formular unten oder direkt per E-Mail. Wir aktualisieren die Daten so schnell wie möglich.
-          </p>
+          <h2 className="text-xl font-semibold tracking-tight">{t('reportTitle')}</h2>
+          <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{t('reportBody')}</p>
         </section>
 
         <section className="mt-10 mb-12">
-          <h2 className="text-xl font-semibold tracking-tight">Feedback-Formular</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Beim Senden öffnet sich dein E-Mail-Programm mit ausgefüllter Nachricht.
-          </p>
+          <h2 className="text-xl font-semibold tracking-tight">{t('formTitle')}</h2>
+          <p className="mt-2 text-sm text-muted-foreground">{t('formSubtitle')}</p>
           <form onSubmit={submit} className="mt-4 space-y-3">
             <input
               required
               value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="Name"
+              onChange={(e) => setForm({...form, name: e.target.value})}
+              placeholder={t('formName')}
               className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary"
             />
             <input
               required
               type="email"
               value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
-              placeholder="E-Mail"
+              onChange={(e) => setForm({...form, email: e.target.value})}
+              placeholder={t('formEmail')}
               className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary"
             />
             <textarea
               required
               rows={4}
               value={form.message}
-              onChange={(e) => setForm({ ...form, message: e.target.value })}
-              placeholder="Nachricht"
+              onChange={(e) => setForm({...form, message: e.target.value})}
+              placeholder={t('formMessage')}
               className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary"
             />
             <button
               type="submit"
               className="inline-flex items-center justify-center rounded-[10px] bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-all hover:shadow-[0_0_24px_var(--accent-glow)]"
             >
-              Senden
+              {t('formSend')}
             </button>
             {sent && (
-              <p className="text-xs text-success">
-                Dein E-Mail-Programm wurde geöffnet. Sende die Nachricht ab, um sie an uns zu schicken.
-              </p>
+              <p className="text-xs text-success">{t('formSent')}</p>
             )}
           </form>
         </section>
