@@ -57,18 +57,23 @@ export function Header() {
 
         {/* Desktop Navigation */}
         <nav className="hidden items-center gap-1 md:flex">
-          {navItems.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                'rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-surface hover:text-foreground',
-                pathname === item.href && 'bg-surface text-foreground'
-              )}
-            >
-              {item.label}
-            </Link>
-          ))}
+          {navItems.map((item) => {
+            const isActive = pathname === item.href;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  'relative rounded-md px-3 py-1.5 text-sm transition-colors',
+                  isActive
+                    ? 'text-primary font-medium bg-primary/10'
+                    : 'text-muted-foreground hover:bg-surface hover:text-foreground'
+                )}
+              >
+                {item.label}
+              </Link>
+            );
+          })}
         </nav>
 
         {/* Right cluster: Toggles + Mobile Menu */}
@@ -93,19 +98,24 @@ export function Header() {
                 <SheetTitle>{t('nav.navigation')}</SheetTitle>
               </SheetHeader>
               <nav className="mt-6 flex flex-col gap-1">
-                {navItems.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    onClick={() => setMobileOpen(false)}
-                    className={cn(
-                      'rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-surface hover:text-foreground',
-                      pathname === item.href && 'bg-surface text-foreground'
-                    )}
-                  >
-                    {item.label}
-                  </Link>
-                ))}
+                {navItems.map((item) => {
+                  const isActive = pathname === item.href;
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={() => setMobileOpen(false)}
+                      className={cn(
+                        'rounded-md px-3 py-2 text-sm transition-colors',
+                        isActive
+                          ? 'bg-primary/10 text-primary font-medium'
+                          : 'text-muted-foreground hover:bg-surface hover:text-foreground'
+                      )}
+                    >
+                      {item.label}
+                    </Link>
+                  );
+                })}
               </nav>
               <div className="mt-8 flex items-center justify-between border-t border-border pt-6">
                 <LanguageToggle />

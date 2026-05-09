@@ -1,5 +1,5 @@
 ﻿'use client';
-import {ArrowRight} from 'lucide-react';
+import {ArrowRight, Calendar} from 'lucide-react';
 import {useTranslations} from 'next-intl';
 import {Link} from '@/i18n/navigation';
 import {HeroStats} from './hero-stats';
@@ -8,9 +8,10 @@ interface HeroProps {
   providerCount: number;
   courseCount: number;
   lastUpdated?: Date;
+  nextExamDate?: string | null;
 }
 
-export function Hero({providerCount, courseCount, lastUpdated}: HeroProps) {
+export function Hero({providerCount, courseCount, lastUpdated, nextExamDate}: HeroProps) {
   const t = useTranslations();
 
   return (
@@ -23,6 +24,18 @@ export function Hero({providerCount, courseCount, lastUpdated}: HeroProps) {
             <span className="h-1.5 w-1.5 rounded-full bg-success" />
             {t('hero.trustBadge')}
           </span>
+  
+          {nextExamDate && (
+            <a
+              href="#zap-timeline"
+              className="mt-3 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
+            >
+              <Calendar className="h-3.5 w-3.5" />
+              {t('zap.heroBanner')}: {nextExamDate}
+              <ArrowRight className="h-3 w-3" />
+            </a>
+          )}
+
           <h1 className="mt-6 text-balance text-5xl font-semibold leading-[1.05] tracking-tight sm:text-6xl">
             {t('hero.headline')}
           </h1>
@@ -31,6 +44,7 @@ export function Hero({providerCount, courseCount, lastUpdated}: HeroProps) {
           </p>
           <div className="mt-8 flex flex-wrap items-center gap-3">
             <Link
+        
               href="/nutzwertanalyse"
               className="inline-flex items-center gap-2 rounded-[10px] bg-primary px-5 py-3 text-sm font-medium text-primary-foreground shadow-[0_0_0_0_var(--accent-glow)] transition-all hover:shadow-[0_0_24px_4px_var(--accent-glow)]"
             >

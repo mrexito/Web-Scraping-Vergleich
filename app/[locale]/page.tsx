@@ -1,13 +1,23 @@
 ﻿import {setRequestLocale} from 'next-intl/server';
 import {Hero} from '@/components/lovable/hero';
 import {ComparisonSection} from '@/components/lovable/comparison-section';
+import {ZapTimeline} from '@/components/lovable/zap-timeline';
 import {adaptProviders, parseWeightsFromString} from '@/utils/adaptProviders';
 import {createServerSupabaseClient} from '@/utils/supabase/server';
 import {parseGymiProviders} from '@/schemas/gymiProviderSchema';
 import {parseCourseDetails} from '@/schemas/courseDetailSchema';
 import {parseCourses} from '@/schemas/courseSchema';
+import {parseZapInfos} from '@/schemas/zapInfoSchema';
 
 const PRIMARY_SCRAPER_METHOD = 'scrapegraphai' as const;
+
+function formatDate(dateString: string | null | undefined, locale: string): string | null {
+  if (!dateString) return null;
+  const d = new Date(dateString);
+  if (isNaN(d.getTime())) return null;
+  const dateLocale = locale === 'en' ? 'en-GB' : 'de-CH';
+  return d.toLocaleDateString(dateLocale, {day: '2-digit', month: 'long', year: 'numeric'});
+}
 
 const HomePage = async ({
   params,
@@ -23,10 +33,13 @@ const HomePage = async ({
   const weights = parseWeightsFromString(sp.w);
 
   const supabase = await createServerSupabaseClient();
+  const today = new Date().toISOString().slice(0, 10);
+
   const [
     {data: rawProviders},
     {data: rawCourseDetails},
     {data: rawCourses},
+    {data: rawNextZap},
   ] = await Promise.all([
     supabase
       .from('GymiProviders')
@@ -58,13 +71,23 @@ const HomePage = async ({
          verfuegbarkeit, is_online, course_url`
       )
       .eq('scraper_method', PRIMARY_SCRAPER_METHOD),
+    supabase
+      .from('zap_info')
+      .select('*')
+      .gte('exam_date', today)
+      .order('exam_date', {ascending: true})
+      .limit(1),
   ]);
 
   const validProviders = parseGymiProviders(rawProviders ?? []);
   const validCourseDetails = parseCourseDetails(rawCourseDetails ?? []);
   const validCourses = parseCourses(rawCourses ?? []);
+  const nextZap = parseZapInfos(rawNextZap ?? []);
 
   const providers = adaptProviders(validProviders, validCourses, validCourseDetails, weights);
+  const nextExamDate = nextZap[0]?.exam_date
+    ? formatDate(nextZap[0].exam_date, locale)
+    : null;
 
   return (
     <>
@@ -72,8 +95,10 @@ const HomePage = async ({
         providerCount={providers.length}
         courseCount={validCourses.length}
         lastUpdated={new Date()}
+        nextExamDate={nextExamDate}
       />
       <ComparisonSection providers={providers} />
+      <ZapTimeline locale={locale} />
     </>
   );
 };

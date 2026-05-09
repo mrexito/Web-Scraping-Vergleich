@@ -34,6 +34,8 @@ function availTone(a: Provider['availability']) {
   return 'bg-muted text-muted-foreground border-border';
 }
 
+const VALID_DAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'] as const;
+
 export function ProviderCard({
   provider,
   onOpen,
@@ -48,6 +50,10 @@ export function ProviderCard({
 
   const availKey = provider.availability;
   const availText = t(`avail.${availKey}`);
+
+  const localizedDays = provider.teachingDays
+    .map((d) => (VALID_DAYS.includes(d as typeof VALID_DAYS[number]) ? t(`days.${d}`) : d))
+    .join(', ');
 
   return (
     <article
@@ -88,7 +94,7 @@ export function ProviderCard({
         </div>
         <div className="flex items-center gap-2.5">
           <Calendar className="h-4 w-4 text-muted-foreground" />
-          <dd>{provider.teachingDays.join(', ')}</dd>
+          <dd>{localizedDays}</dd>
         </div>
         <div className="flex items-center gap-2.5">
           <MapPin className="h-4 w-4 text-muted-foreground" />
