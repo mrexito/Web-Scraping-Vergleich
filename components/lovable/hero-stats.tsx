@@ -1,5 +1,7 @@
-import { Building2, BookOpen, RefreshCw } from 'lucide-react';
-import { CountUp } from './count-up';
+﻿'use client';
+import {Building2, BookOpen, RefreshCw} from 'lucide-react';
+import {useLocale, useTranslations} from 'next-intl';
+import {CountUp} from './count-up';
 
 export interface HeroStatsProps {
   providerCount: number;
@@ -7,20 +9,24 @@ export interface HeroStatsProps {
   lastUpdated?: Date;
 }
 
-export function HeroStats({ providerCount, courseCount, lastUpdated }: HeroStatsProps) {
+export function HeroStats({providerCount, courseCount, lastUpdated}: HeroStatsProps) {
+  const t = useTranslations('trust');
+  const locale = useLocale();
+
+  const dateLocale = locale === 'en' ? 'en-GB' : 'de-CH';
   const updatedTitle = lastUpdated
-    ? lastUpdated.toLocaleDateString('de-CH')
+    ? lastUpdated.toLocaleDateString(dateLocale)
     : undefined;
 
   const items = [
-    { Icon: Building2, value: providerCount, label: 'Anbieter' },
-    { Icon: BookOpen, value: courseCount, label: 'Kurse' },
-    { Icon: RefreshCw, value: null as number | null, label: 'Aktualisiert', title: updatedTitle },
+    {Icon: Building2, value: providerCount, label: t('providers')},
+    {Icon: BookOpen, value: courseCount, label: t('courses')},
+    {Icon: RefreshCw, value: null as number | null, label: t('updated'), title: updatedTitle},
   ];
 
   return (
     <div className="mt-14 grid grid-cols-1 gap-3 sm:grid-cols-3">
-      {items.map(({ Icon, value, label, title }, i) => (
+      {items.map(({Icon, value, label, title}, i) => (
         <div
           key={i}
           title={title}
@@ -31,7 +37,7 @@ export function HeroStats({ providerCount, courseCount, lastUpdated }: HeroStats
           </span>
           <div>
             {value != null && (
-              <div className="text-lg font-semibold leading-none" style={{ fontVariantNumeric: 'tabular-nums' }}>
+              <div className="text-lg font-semibold leading-none" style={{fontVariantNumeric: 'tabular-nums'}}>
                 <CountUp to={value} />
               </div>
             )}

@@ -1,11 +1,11 @@
-'use client';
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { GraduationCap, Menu } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { cn } from '@/lib/utils';
-import { ThemeToggle } from '@/components/theme-toggle';
-import { LanguageToggle } from '@/components/language-toggle';
+﻿'use client';
+import {GraduationCap, Menu} from 'lucide-react';
+import {useEffect, useState} from 'react';
+import {useTranslations} from 'next-intl';
+import {Link, usePathname} from '@/i18n/navigation';
+import {cn} from '@/lib/utils';
+import {ThemeToggle} from '@/components/theme-toggle';
+import {LanguageToggle} from '@/components/language-toggle';
 import {
   Sheet,
   SheetContent,
@@ -14,25 +14,26 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet';
 
-const navItems = [
-  { href: "/", label: "Vergleich" },
-  { href: "/nutzwertanalyse", label: "Nutzwertanalyse" },
-  { href: "/zap-info", label: "ZAP-Info" },
-  { href: "/about", label: "Über uns" },
-  { href: "/contact", label: "Kontakt" },
-] as const;
-
 export function Header() {
   const pathname = usePathname();
+  const t = useTranslations();
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
     onScroll();
-    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('scroll', onScroll, {passive: true});
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
+
+  const navItems = [
+    {href: '/', label: t('nav.comparison')},
+    {href: '/nutzwertanalyse', label: t('nav.nutzwertanalyse')},
+    {href: '/zap-info', label: t('nav.zapInfo')},
+    {href: '/about', label: t('nav.about')},
+    {href: '/contact', label: t('nav.contact')},
+  ] as const;
 
   return (
     <header
@@ -50,7 +51,7 @@ export function Header() {
             <GraduationCap className="h-5 w-5" />
           </div>
           <span className="text-sm font-semibold tracking-tight">
-            Vergleich Gymi-Vorbereitungskurse
+            {t('common.appName')}
           </span>
         </Link>
 
@@ -81,7 +82,7 @@ export function Header() {
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetTrigger asChild>
               <button
-                aria-label="Menü öffnen"
+                aria-label={t('nav.openMenu')}
                 className="grid h-9 w-9 place-items-center rounded-lg border border-border bg-surface text-muted-foreground transition-colors hover:text-foreground md:hidden"
               >
                 <Menu className="h-4 w-4" />
@@ -89,7 +90,7 @@ export function Header() {
             </SheetTrigger>
             <SheetContent side="right" className="w-[280px] sm:w-[320px]">
               <SheetHeader>
-                <SheetTitle>Navigation</SheetTitle>
+                <SheetTitle>{t('nav.navigation')}</SheetTitle>
               </SheetHeader>
               <nav className="mt-6 flex flex-col gap-1">
                 {navItems.map((item) => (
