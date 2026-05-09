@@ -1,22 +1,143 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 @import "@flaticon/flaticon-uicons/css/all/all.css";
 
-@theme {
-  --color-background:           hsl(var(--background));
-  --color-foreground:           hsl(var(--foreground));
-  --color-btn-background:       hsl(var(--btn-background));
-  --color-btn-background-hover: hsl(var(--btn-background-hover));
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --radius-sm:  calc(var(--radius) - 4px);
+  --radius-md:  calc(var(--radius) - 2px);
+  --radius-lg:  var(--radius);
+  --radius-xl:  calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+
+  --color-background:           var(--background);
+  --color-foreground:           var(--foreground);
+  --color-surface:              var(--surface);
+  --color-surface-elevated:     var(--surface-elevated);
+  --color-card:                 var(--card);
+  --color-card-foreground:      var(--card-foreground);
+  --color-popover:              var(--popover);
+  --color-popover-foreground:   var(--popover-foreground);
+  --color-primary:              var(--primary);
+  --color-primary-foreground:   var(--primary-foreground);
+  --color-secondary:            var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted:                var(--muted);
+  --color-muted-foreground:     var(--muted-foreground);
+  --color-accent:               var(--accent);
+  --color-accent-foreground:    var(--accent-foreground);
+  --color-accent-glow:          var(--accent-glow);
+  --color-destructive:          var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success:              var(--success);
+  --color-warning:              var(--warning);
+  --color-border:               var(--border);
+  --color-input:                var(--input);
+  --color-ring:                 var(--ring);
+  --color-ring-offset-background: var(--background);
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, monospace;
+
+  --shadow-card:       0 1px 3px 0 rgb(0 0 0 / 0.04);
+  --shadow-card-hover: 0 4px 20px 0 rgb(0 0 0 / 0.06);
+}
+
+:root {
+  --radius: 0.625rem;
+
+  --background:             oklch(0.98 0 0);
+  --foreground:             oklch(0.145 0 0);
+  --surface:                oklch(0.965 0.002 286);
+  --surface-elevated:       oklch(1 0 0);
+  --card:                   oklch(1 0 0);
+  --card-foreground:        oklch(0.145 0 0);
+  --popover:                oklch(1 0 0);
+  --popover-foreground:     oklch(0.145 0 0);
+  --primary:                oklch(0.585 0.215 277);
+  --primary-foreground:     oklch(0.985 0 0);
+  --secondary:              oklch(0.965 0.002 286);
+  --secondary-foreground:   oklch(0.145 0 0);
+  --muted:                  oklch(0.965 0.002 286);
+  --muted-foreground:       oklch(0.5 0.018 264);
+  --accent:                 oklch(0.585 0.215 277);
+  --accent-foreground:      oklch(0.985 0 0);
+  --accent-glow:            oklch(0.585 0.215 277 / 0.18);
+  --destructive:            oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
+  --success:                oklch(0.65 0.16 152);
+  --warning:                oklch(0.78 0.15 75);
+  --border:                 oklch(0.92 0.003 286);
+  --input:                  oklch(0.92 0.003 286);
+  --ring:                   oklch(0.585 0.215 277);
+}
+
+.dark {
+  --background:             oklch(0.13 0.012 280);
+  --foreground:             oklch(0.97 0.003 286);
+  --surface:                oklch(0.175 0.012 280);
+  --surface-elevated:       oklch(0.215 0.012 280);
+  --card:                   oklch(0.175 0.012 280);
+  --card-foreground:        oklch(0.97 0.003 286);
+  --popover:                oklch(0.215 0.012 280);
+  --popover-foreground:     oklch(0.97 0.003 286);
+  --primary:                oklch(0.755 0.155 295);
+  --primary-foreground:     oklch(0.13 0.012 280);
+  --secondary:              oklch(0.215 0.012 280);
+  --secondary-foreground:   oklch(0.97 0.003 286);
+  --muted:                  oklch(0.215 0.012 280);
+  --muted-foreground:       oklch(0.68 0.012 286);
+  --accent:                 oklch(0.755 0.155 295);
+  --accent-foreground:      oklch(0.13 0.012 280);
+  --accent-glow:            oklch(0.755 0.155 295 / 0.28);
+  --destructive:            oklch(0.704 0.191 22.216);
+  --destructive-foreground: oklch(0.97 0.003 286);
+  --success:                oklch(0.72 0.16 152);
+  --warning:                oklch(0.82 0.15 75);
+  --border:                 oklch(0.27 0.012 280);
+  --input:                  oklch(0.27 0.012 280);
+  --ring:                   oklch(0.755 0.155 295);
 }
 
 @layer base {
-  :root {
-    --background: 200 20% 98%;
-    --btn-background: 200 10% 91%;
-    --btn-background-hover: 200 10% 89%;
-    --foreground: 200 50% 3%;
+  * { border-color: var(--color-border); }
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    font-feature-settings: "cv11", "ss01";
+  }
+  h1, h2, h3, h4 {
+    letter-spacing: -0.02em;
+    font-weight: 600;
   }
 }
 
-@layer base {
-  * { @apply border-foreground/20; }
+@layer utilities {
+  .bg-mesh {
+    background-image:
+      radial-gradient(at 20% 10%, var(--accent-glow) 0px, transparent 50%),
+      radial-gradient(at 80% 0%, oklch(0.7 0.18 260 / 0.15) 0px, transparent 50%),
+      radial-gradient(at 60% 60%, oklch(0.75 0.155 320 / 0.12) 0px, transparent 50%);
+  }
+  .grid-pattern {
+    background-image:
+      linear-gradient(to right, var(--color-border) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--color-border) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: radial-gradient(ellipse 60% 50% at 50% 0%, black, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

@@ -1,5 +1,6 @@
 import Navigation from "../components/navigation";
 import { GeistSans } from 'geist/font/sans';
+import { ThemeProvider } from '@/components/theme-provider';
 import './globals.css';
 
 const defaultUrl = process.env.VERCEL_URL
@@ -18,12 +19,14 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className={GeistSans.className}>
+    <html lang="de" className={GeistSans.variable} suppressHydrationWarning>
       <body className="bg-background text-foreground">
-        <main className="min-h-screen flex flex-col items-center">
-          <Navigation />
-          {children}
-        </main>
+        <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
+          <main className="min-h-screen flex flex-col items-center">
+            <Navigation />
+            {children}
+          </main>
+        </ThemeProvider>
       </body>
     </html>
   );
