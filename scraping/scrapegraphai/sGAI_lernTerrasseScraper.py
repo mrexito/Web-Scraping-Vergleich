@@ -57,7 +57,10 @@ Für jeden Kurs (Tabellenzeile):
 
 Einmalig Anbieter-Metadaten:
 - aufsatzkorrektur, einstufungstest, e_learning, pruefungsarchiv, beratungsgespraech,
-  lernunterlagen, pruefungssimulation (alle als bool)
+  lernunterlagen, pruefungssimulation, unterstuetzung_ausserhalb (alle als bool)
+- unterstuetzung_ausserhalb: true wenn Nachholoptionen, Aufholstunden, Hausaufgabenbetreuung,
+  Wiederholung verpasster Lektionen oder Unterstützung ausserhalb der Unterrichtszeiten
+  angeboten wird
 - max_teilnehmer: Zahl
 
 Antworte NUR mit reinem JSON: {"courses": [...], "metadata": {...}}
@@ -152,10 +155,11 @@ def save_metadata(metadata: dict) -> None:
     print("  ✓ GymiProviders aktualisiert")
 
     supabase.table("CourseDetails").update({
-        "Pruefungsarchiv":       bool(metadata.get("pruefungsarchiv", False)),
-        "Beratungsgespraech":    bool(metadata.get("beratungsgespraech", False)),
-        "Eigene Lernunterlagen": bool(metadata.get("lernunterlagen", False)),
-        "Standort":              LOCATION,
+        "Pruefungsarchiv":                          bool(metadata.get("pruefungsarchiv", False)),
+        "Beratungsgespraech":                       bool(metadata.get("beratungsgespraech", False)),
+        "Eigene Lernunterlagen":                    bool(metadata.get("lernunterlagen", False)),
+        "Unterstuezung ausserhalb Unterrichtszeit": bool(metadata.get("unterstuetzung_ausserhalb", False)),
+        "Standort":                                 LOCATION,
     }).eq("ID", PROVIDER_ID).execute()
     print("  ✓ CourseDetails aktualisiert")
 

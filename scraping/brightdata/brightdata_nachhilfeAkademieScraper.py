@@ -1,23 +1,30 @@
 """
-brightdata_gymivorbereitungZuerichScraper.py
-==============================================
-Bright Data Trigger-Skript für Gymivorbereitung Zürich (PROVIDER_ID = 1).
+brightdata_nachhilfeAkademieScraper.py
+========================================
+Bright Data Trigger-Skript für Nachhilfe Akademie (PROVIDER_ID = 6).
 
 Anbieter hat ZWEI separate Detail-Seiten:
-  - https://gymivorbereitung-zuerich.ch/langzeit/halbjahreskurs (Langzeitgymnasium)
-  - https://gymivorbereitung-zuerich.ch/kurzzeit/halbjahreskurs (Kurzzeitgymnasium)
+  - https://nachhilfeakademie.ch/langzeitgymnasium/
+  - https://nachhilfeakademie.ch/kurzgymnasium/
 
 Bright Data liefert pro URL ein Entry zurück.
 
+Besonderheiten:
+  - Nachhilfe Akademie strukturiert ihr Angebot fächer-basiert
+    (Deutsch Grammatik, Mathematik, etc.) — die Kurse sind für Lang
+    und Kurz oft identisch, mit gleichen Preisen.
+  - availability_status fehlt im Bright-Data-Output (Anbieter zeigt
+    keine Verfügbarkeit auf der Seite an) → in Python NULL gesetzt.
+  - Preis ist Pauschalpreis (z.B. CHF 1628 für 22 Termine), nicht
+    pro Lektion — das ist ein wichtiger Befund für die Vergleichbarkeit.
+
 Verarbeitung:
-  1. course_type aus der Source-URL ableiten (eindeutig: langzeit/kurzzeit)
-  2. weekday wird direkt aus Bright Data übernommen (Tag steht da, falls vorhanden)
-  3. Online-Locations werden normalisiert (case-insensitive: "Online" → "online")
-  4. Metadaten werden über beide Entries aggregiert (ODER-Verknüpfung)
+  - course_type aus Source-URL (eindeutig: langzeit/kurz)
+  - Metadaten aus beiden Entries aggregiert (ODER über alle Booleans)
 
 Voraussetzung auf brightdata.com:
   - Data Collector mit Schema (10 Top-Level + 7 courses-Felder)
-  - Collector-ID in .env als BRIGHT_DATA_COLLECTOR_ID_GYMIVORBEREITUNG_ZUERICH
+  - Collector-ID in .env als BRIGHT_DATA_COLLECTOR_ID_NACHHILFE_AKADEMIE
 """
 import os
 import re
@@ -47,16 +54,15 @@ load_dotenv()
 # KONFIGURATION
 # =====================================================================
 SCRAPER_METHOD = "brightdata"
-PROVIDER_ID    = 1
-PROVIDER_NAME  = "Gymivorbereitung Zürich"
+PROVIDER_ID    = 6
+PROVIDER_NAME  = "Nachhilfe Akademie"
 
 BRIGHT_DATA_API_TOKEN = os.getenv("BRIGHT_DATA_API_TOKEN")
-COLLECTOR_ID          = os.getenv("BRIGHT_DATA_COLLECTOR_ID_GYMIVORBEREITUNG_ZUERICH")
+COLLECTOR_ID          = os.getenv("BRIGHT_DATA_COLLECTOR_ID_NACHHILFE_AKADEMIE")
 
-# Beide Detail-URLs — Bright Data liefert pro URL ein Entry
 URLS = [
-    {"url": "https://gymivorbereitung-zuerich.ch/langzeit/halbjahreskurs"},
-    {"url": "https://gymivorbereitung-zuerich.ch/kurzzeit/halbjahreskurs"},
+    {"url": "https://nachhilfeakademie.ch/langzeitgymnasium/"},
+    {"url": "https://nachhilfeakademie.ch/kurzgymnasium/"},
 ]
 
 
@@ -104,14 +110,12 @@ def wait_for_results(job_id: str, max_wait: int = 180) -> list:
 # HILFSFUNKTIONEN
 # =====================================================================
 def clean_string(s):
-    """Entfernt Newlines/extra spaces."""
     if not s:
         return ""
     return re.sub(r"\s+", " ", str(s).replace("\n", " ")).strip()
 
 
 def normalize_availability(raw):
-    """Normalisiert availability_status auf viele/wenige/ausgebucht."""
     if not raw:
         return None
     s = str(raw).strip().lower()
@@ -125,7 +129,6 @@ def normalize_availability(raw):
 
 
 def normalize_location(loc):
-    """Normalisiert location: 'Zu Hause', 'Online', 'online' → 'online'."""
     if not loc:
         return None
     s = str(loc).strip()
@@ -138,16 +141,16 @@ def normalize_location(loc):
 def determine_course_type_from_url(url: str) -> str | None:
     """course_type aus der Source-URL ableiten.
 
-    Bei Gymivorbereitung Zürich ist die URL eindeutig:
-    - /langzeit/... → langgymi
-    - /kurzzeit/... → kurzgymi
+    Bei Nachhilfe Akademie eindeutig:
+      - /langzeitgymnasium/ → langgymi
+      - /kurzgymnasium/ → kurzgymi
     """
     if not url:
         return None
     url_lower = url.lower()
-    if "/langzeit" in url_lower or "langzeitgymnasium" in url_lower:
+    if "langzeitgymnasium" in url_lower or "/langgymnasium" in url_lower:
         return "langgymi"
-    if "/kurzzeit" in url_lower or "kurzzeitgymnasium" in url_lower:
+    if "kurzzeitgymnasium" in url_lower or "/kurzgymnasium" in url_lower:
         return "kurzgymi"
     return None
 
@@ -156,12 +159,6 @@ def determine_course_type_from_url(url: str) -> str | None:
 # METADATEN
 # =====================================================================
 def aggregate_metadata(entries: list) -> dict:
-    """Konsolidiert Metadaten aus beiden Entries.
-
-    - Booleans: ODER-Verknüpfung (eines der Entries reicht für true)
-    - max_teilnehmer: erster nicht-null Wert
-    - standorte: vereinigte Menge
-    """
     if not entries:
         return {}
 
@@ -193,7 +190,6 @@ def aggregate_metadata(entries: list) -> dict:
 
 
 def update_provider_metadata(metadata: dict, run_id: str):
-    """Schreibt Stammdaten in GymiProviders und CourseDetails."""
     if not metadata:
         print("  ⚠ Keine Metadaten verfügbar — Schritt übersprungen")
         return
@@ -240,11 +236,6 @@ def update_provider_metadata(metadata: dict, run_id: str):
 # KURSE-TRANSFORMATION
 # =====================================================================
 def transform_courses(entries: list) -> list:
-    """Transformiert die Bright Data Entries in das Supabase-Format.
-
-    course_type wird aus der Source-URL des Entries abgeleitet
-    (zuverlässig, da getrennte Detail-Seiten).
-    """
     courses = []
     skipped = 0
 
@@ -268,8 +259,6 @@ def transform_courses(entries: list) -> list:
                 skipped += 1
                 continue
 
-            # weekday: bei GVZ ist der Tag bereits im weekday-Feld (oder fehlt
-            # bei Online-Kursen)
             weekday = clean_string(raw.get("weekday"))
             occurrence = weekday if weekday else None
 
@@ -304,7 +293,7 @@ def main():
     print(f"Starte {PROVIDER_NAME} Scraper (Bright Data)...")
 
     if not BRIGHT_DATA_API_TOKEN or not COLLECTOR_ID:
-        print(f"  ✗ BRIGHT_DATA_API_TOKEN oder BRIGHT_DATA_COLLECTOR_ID_GYMIVORBEREITUNG_ZUERICH fehlt in .env")
+        print(f"  ✗ BRIGHT_DATA_API_TOKEN oder BRIGHT_DATA_COLLECTOR_ID_NACHHILFE_AKADEMIE fehlt in .env")
         return
 
     with ScrapeRun(SCRAPER_METHOD, PROVIDER_ID) as run:
@@ -335,11 +324,9 @@ def main():
 
         print(f"  → {len(raw_data)} Entry(s) erhalten")
 
-        # Metadaten aus beiden Entries aggregieren
         metadata = aggregate_metadata(raw_data)
         update_provider_metadata(metadata, run.id)
 
-        # Kurse transformieren
         try:
             courses = transform_courses(raw_data)
             print(f"  → {len(courses)} Kurs(e) transformiert")
@@ -350,7 +337,6 @@ def main():
             run.error_count += 1
             return
 
-        # Alte BD-Kurse löschen, neue speichern
         try:
             supabase.table("courses").delete() \
                 .eq("provider_id", PROVIDER_ID) \

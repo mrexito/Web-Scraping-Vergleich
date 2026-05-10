@@ -172,9 +172,9 @@ export function ProviderSheet({
                   <ServiceRow label={t('service.aufsatzkorrektur')} has={provider.hasAufsatzkorrektur} newLabel={t('sheet.new')} />
                   <ServiceRow label={t('service.lernunterlagen')} has={provider.hasLernunterlagen} newLabel={t('sheet.new')} />
                   <ServiceRow label={t('service.beratungsgespraech')} has={provider.hasBeratungsgespraech} newLabel={t('sheet.new')} />
-                  <ServiceRow label={t('service.distanceLearning')} has={provider.hasDistanceLearning} isNew newLabel={t('sheet.new')} />
-                  <ServiceRow label={t('service.digitalMaterials')} has={provider.hasDigitalMaterials} isNew newLabel={t('sheet.new')} />
-                  <ServiceRow label={t('service.catchUp')} has={provider.hasCatchUpOptions} isNew newLabel={t('sheet.new')} />
+                  <ServiceRow label={t('service.distanceLearning')} has={provider.hasDistanceLearning} newLabel={t('sheet.new')} />
+                  <ServiceRow label={t('service.digitalMaterials')} has={provider.hasDigitalMaterials} newLabel={t('sheet.new')} />
+                  <ServiceRow label={t('service.catchUp')} has={provider.hasCatchUpOptions} newLabel={t('sheet.new')} />
                 </div>
               </section>
             </div>

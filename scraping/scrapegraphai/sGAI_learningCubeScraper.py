@@ -58,6 +58,7 @@ Gib zurück:
 - lernunterlagen: true wenn Lernmaterial oder Lehrmittel inbegriffen
 - pruefungssimulation: true wenn Simulationsprüfung oder Probeprüfung erwähnt wird
 - einzelkurse: true wenn Einzelunterricht angeboten wird
+- unterstuetzung_ausserhalb: true wenn Nachholoptionen, Aufholstunden, Hausaufgabenbetreuung, Wiederholung verpasster Lektionen oder Unterstützung ausserhalb der Unterrichtszeiten angeboten wird
 - max_teilnehmer: maximale Gruppengrösse als Zahl (z.B. 3)
 - standort: Kursort (z.B. "Meilen")
 
@@ -80,7 +81,7 @@ Für jeden Kurs/Termin gib zurück:
 - max_teilnehmer: Maximale Teilnehmerzahl als Zahl
 - availability: "ausgebucht" wenn ausgebucht, sonst "viele"
 
-Gib ausserdem einmalig Anbieter-Metadaten zurück (dieselben Felder wie oben).
+Gib ausserdem einmalig Anbieter-Metadaten zurück (dieselben Felder wie oben, inkl. unterstuetzung_ausserhalb).
 
 Antworte NUR mit reinem JSON: {"courses": [{...}], "metadata": {...}}
 """
@@ -181,10 +182,11 @@ def save_metadata(metadata: dict) -> None:
     print("  ✓ GymiProviders aktualisiert")
 
     supabase.table("CourseDetails").update({
-        "Pruefungsarchiv":       bool(metadata.get("pruefungsarchiv", False)),
-        "Beratungsgespraech":    bool(metadata.get("beratungsgespraech", False)),
-        "Eigene Lernunterlagen": bool(metadata.get("lernunterlagen", False)),
-        "Standort":              LOCATION,
+        "Pruefungsarchiv":                          bool(metadata.get("pruefungsarchiv", False)),
+        "Beratungsgespraech":                       bool(metadata.get("beratungsgespraech", False)),
+        "Eigene Lernunterlagen":                    bool(metadata.get("lernunterlagen", False)),
+        "Unterstuezung ausserhalb Unterrichtszeit": bool(metadata.get("unterstuetzung_ausserhalb", False)),
+        "Standort":                                 LOCATION,
     }).eq("ID", PROVIDER_ID).execute()
     print("  ✓ CourseDetails aktualisiert")
 

@@ -42,6 +42,7 @@ Du bist ein Datenextraktions-Assistent. Analysiere diese Seite semantisch:
 - lernunterlagen: true wenn Lehrmittel, Arbeitsheft oder Kursmaterial inbegriffen ist
 - pruefungssimulation: true wenn Simulationsprüfung explizit erwähnt wird
 - einzelkurse: true wenn Einzelunterricht oder Privatunterricht angeboten werden
+- unterstuetzung_ausserhalb: true wenn Nachholoptionen, Aufholstunden, Hausaufgabenbetreuung, Wiederholung verpasster Lektionen oder Unterstützung ausserhalb der Unterrichtszeiten angeboten wird
 - max_teilnehmer: maximale Gruppengrösse als Zahl
 - standorte: Liste aller Kursorte
 
@@ -184,10 +185,11 @@ def save_metadata(metadata: dict, kosten: dict) -> None:
     lehrmittel = bool(kosten.get("kosten", {}).get("lehrmittel_inbegriffen", False))
 
     supabase.table("CourseDetails").update({
-        "Pruefungsarchiv":       bool(metadata.get("pruefungsarchiv", False)),
-        "Beratungsgespraech":    bool(metadata.get("beratungsgespraech", False)),
-        "Eigene Lernunterlagen": lehrmittel,
-        "Standort":              standort_str,
+        "Pruefungsarchiv":                          bool(metadata.get("pruefungsarchiv", False)),
+        "Beratungsgespraech":                       bool(metadata.get("beratungsgespraech", False)),
+        "Eigene Lernunterlagen":                    lehrmittel,
+        "Unterstuezung ausserhalb Unterrichtszeit": bool(metadata.get("unterstuetzung_ausserhalb", False)),
+        "Standort":                                 standort_str,
     }).eq("ID", PROVIDER_ID).execute()
     print("  ✓ CourseDetails aktualisiert")
 

@@ -66,6 +66,7 @@ Gib auch folgende Anbieter-Metadaten zurück:
 - lernunterlagen: true wenn Kursmaterial oder Lernmaterial erwähnt wird
 - pruefungssimulation: true wenn Prüfungssimulation oder Testprüfung erwähnt wird
 - einzelkurse: true wenn Einzelunterricht oder Privatnachhilfe angeboten wird
+- unterstuetzung_ausserhalb: true wenn Nachholoptionen, Aufholstunden, Hausaufgabenbetreuung, Wiederholung verpasster Lektionen oder Unterstützung ausserhalb der Unterrichtszeiten angeboten wird
 - max_teilnehmer: maximale Gruppengrösse als Zahl (z.B. 8)
 - standorte: kommagetrennte Liste aller Standorte (z.B. "Zürich, Online")
 
@@ -203,10 +204,11 @@ def save_metadata(metadata: dict) -> None:
     print("  ✓ GymiProviders Metadaten aktualisiert")
 
     supabase.table("CourseDetails").update({
-        "Pruefungsarchiv":       bool(metadata.get("pruefungsarchiv", False)),
-        "Beratungsgespraech":    bool(metadata.get("beratungsgespraech", False)),
-        "Eigene Lernunterlagen": bool(metadata.get("lernunterlagen", False)),
-        "Standort":              standorte,
+        "Pruefungsarchiv":                          bool(metadata.get("pruefungsarchiv", False)),
+        "Beratungsgespraech":                       bool(metadata.get("beratungsgespraech", False)),
+        "Eigene Lernunterlagen":                    bool(metadata.get("lernunterlagen", False)),
+        "Unterstuezung ausserhalb Unterrichtszeit": bool(metadata.get("unterstuetzung_ausserhalb", False)),
+        "Standort":                                 standorte,
     }).eq("ID", PROVIDER_ID).execute()
     print("  ✓ CourseDetails Metadaten aktualisiert")
 

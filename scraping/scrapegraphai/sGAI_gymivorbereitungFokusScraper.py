@@ -41,7 +41,10 @@ ANMELDUNG_KURZ_URL = f"{BASE_URL}/kurse/gymivorbereitungskurs-kurzzeit#form"
 PROMPT_OVERVIEW = (
     "Du bist ein Datenextraktions-Assistent. Extrahiere Anbieter-Metadaten von dieser Seite:\n"
     "- aufsatzkorrektur, einstufungstest, e_learning, pruefungsarchiv, beratungsgespraech, "
-    "lernunterlagen, pruefungssimulation, einzelkurse (alle als bool)\n"
+    "lernunterlagen, pruefungssimulation, einzelkurse, unterstuetzung_ausserhalb (alle als bool)\n"
+    "- unterstuetzung_ausserhalb: true wenn Nachholoptionen, Aufholstunden, Hausaufgabenbetreuung, "
+    "Wiederholung verpasster Lektionen oder Unterstützung ausserhalb der Unterrichtszeiten "
+    "angeboten wird\n"
     "- max_teilnehmer: Zahl\n"
     "- standorte: Liste\n"
     'Antworte NUR mit reinem JSON: {"metadata": {...}}'
@@ -170,10 +173,11 @@ def save_metadata(metadata: dict) -> None:
     print("  ✓ GymiProviders aktualisiert")
 
     supabase.table("CourseDetails").update({
-        "Pruefungsarchiv":       bool(metadata.get("pruefungsarchiv", False)),
-        "Beratungsgespraech":    bool(metadata.get("beratungsgespraech", False)),
-        "Eigene Lernunterlagen": bool(metadata.get("lernunterlagen", False)),
-        "Standort":              standort_str,
+        "Pruefungsarchiv":                          bool(metadata.get("pruefungsarchiv", False)),
+        "Beratungsgespraech":                       bool(metadata.get("beratungsgespraech", False)),
+        "Eigene Lernunterlagen":                    bool(metadata.get("lernunterlagen", False)),
+        "Unterstuezung ausserhalb Unterrichtszeit": bool(metadata.get("unterstuetzung_ausserhalb", False)),
+        "Standort":                                 standort_str,
     }).eq("ID", PROVIDER_ID).execute()
     print("  ✓ CourseDetails aktualisiert")
 

@@ -1,8 +1,8 @@
 """
-sGAI_schlaumacherScraper.py (refactored)
-=========================================
-ScrapeGraphAI-Scraper für Schlaumacher.
-Einfach aufgebaut — scrapt nur eine Übersichtsseite mit Kursen + Metadaten.
+sGAI_schlaumacherScraper.py (NATIV ScrapeGraphAI + chunk_size)
+========================================================================
+Nutzt nativ SmartScraperGraph mit der erweiterten graph_config
+(chunk_size=4000) aus scrape_utils.
 """
 
 import json
@@ -35,39 +35,38 @@ Du bist ein Datenextraktions-Assistent für eine Vergleichsplattform von Gymi-Vo
 Extrahiere ALLE Kurse von dieser Seite. Für jeden Kurs gib zurück:
 - title: Kursname (z.B. "Langzeitgymnasium: Vorbereitung Start September: Mittwoch")
 - course_type: "langgymi" oder "kurzgymi"
-- weekday: Wochentag(e) auf Deutsch (z.B. "Mittwoch", "Samstag", "Montag–Freitag")
+- weekday: Wochentag(e) auf Deutsch
 - course_time: Kurszeit (z.B. "13:30-16:30")
-- start_date: Startdatum im Format TT.MM.JJJJ
-- end_date: Enddatum im Format TT.MM.JJJJ
-- price_chf: Gesamtpreis als Zahl (z.B. 2940, 980)
-- location: Kursort (z.B. "Schifflände 26, 8001 Zürich")
+- start_date: TT.MM.JJJJ
+- end_date: TT.MM.JJJJ
+- price_chf: Gesamtpreis als Zahl
+- location: Kursort
 - course_url: URL des Kurses falls vorhanden
 - availability: "ausgebucht" wenn ausgebucht, sonst "viele"
 
 Extrahiere ausserdem Anbieter-Metadaten:
-- aufsatzkorrektur: true wenn Aufsatzschreiben oder Aufsatztraining erwähnt wird
-- einstufungstest: true wenn Einstufungstest oder Standortbestimmung erwähnt wird
-- e_learning: true wenn Online-Unterricht oder E-Learning erwähnt wird
-- pruefungsarchiv: true wenn Prüfungsarchiv oder alte Prüfungen erwähnt werden
-- beratungsgespraech: true wenn Beratungsgespräch oder Erstgespräch angeboten wird
-- lernunterlagen: true wenn Kursunterlagen oder Lernmaterial inbegriffen sind
-- pruefungssimulation: true wenn Prüfungssimulation oder Simulationsprüfung erwähnt wird
-- einzelkurse: true wenn Einzelkurse oder Einzelunterricht angeboten werden
-- max_teilnehmer: maximale Teilnehmerzahl als Zahl (z.B. 8)
-- standort: Kursort (z.B. "Schifflände 26, 8001 Zürich")
+- aufsatzkorrektur, einstufungstest, e_learning, pruefungsarchiv, beratungsgespraech,
+  lernunterlagen, pruefungssimulation, einzelkurse, unterstuetzung_ausserhalb (alle als bool)
+- unterstuetzung_ausserhalb: true wenn Nachholoptionen, Aufholstunden, Hausaufgabenbetreuung,
+  Wiederholung verpasster Lektionen oder Unterstützung ausserhalb der Unterrichtszeiten
+  angeboten wird
+- max_teilnehmer: Zahl
+- standorte: Liste
 
 Antworte NUR mit reinem JSON: {"courses": [...], "metadata": {...}}
 """
 
 
 def scrape_page(url: str, prompt: str) -> dict:
+    """Native ScrapeGraphAI mit graph_config (inkl. chunk_size)."""
     print(f"\n  Scrapt: {url}")
+    print(f"  graph_config chunk_size: {graph_config.get('chunk_size', 'NICHT GESETZT')}")
     try:
         scraper = SmartScraperGraph(prompt=prompt, source=url, config=graph_config)
         result = scraper.run()
     except Exception as e:
         error_str = str(e)
-        print(f"  Warnung: Exception: {error_str[:120]}")
+        print(f"  Warnung: Exception: {error_str[:200]}")
         extracted = extract_json_from_string(error_str)
         if extracted:
             print("  JSON aus Exception extrahiert.")
@@ -78,7 +77,6 @@ def scrape_page(url: str, prompt: str) -> dict:
         extracted = extract_json_from_string(result)
         if extracted:
             return extracted
-        print(f"  Warnung: JSON-Parsing fehlgeschlagen. Rohtext: {result[:200]}")
         return {}
 
     return result if isinstance(result, dict) else {}
@@ -123,7 +121,12 @@ def save_metadata(metadata: dict) -> None:
 
     max_t = metadata.get("max_teilnehmer")
     max_t_str = str(int(max_t)) if max_t and str(max_t).isdigit() else None
-    standort = metadata.get("standort") or "Zürich"
+
+    standorte = metadata.get("standorte") or metadata.get("standort") or "Zürich"
+    if isinstance(standorte, list):
+        standort_str = ", ".join(str(s) for s in standorte if s) or "Zürich"
+    else:
+        standort_str = str(standorte) or "Zürich"
 
     supabase.table("GymiProviders").update({
         "E-Learning":                     bool(metadata.get("e_learning", False)),
@@ -136,16 +139,17 @@ def save_metadata(metadata: dict) -> None:
     print("  ✓ GymiProviders aktualisiert")
 
     supabase.table("CourseDetails").update({
-        "Pruefungsarchiv":       bool(metadata.get("pruefungsarchiv", False)),
-        "Beratungsgespraech":    bool(metadata.get("beratungsgespraech", False)),
-        "Eigene Lernunterlagen": bool(metadata.get("lernunterlagen", False)),
-        "Standort":              standort,
+        "Pruefungsarchiv":                          bool(metadata.get("pruefungsarchiv", False)),
+        "Beratungsgespraech":                       bool(metadata.get("beratungsgespraech", False)),
+        "Eigene Lernunterlagen":                    bool(metadata.get("lernunterlagen", False)),
+        "Unterstuezung ausserhalb Unterrichtszeit": bool(metadata.get("unterstuetzung_ausserhalb", False)),
+        "Standort":                                 standort_str,
     }).eq("ID", PROVIDER_ID).execute()
     print("  ✓ CourseDetails aktualisiert")
 
 
 def main():
-    print(f"Starte {PROVIDER_NAME} Scraper (ScrapeGraphAI + BFH LLM)...")
+    print(f"Starte {PROVIDER_NAME} Scraper (NATIV ScrapeGraphAI + chunk_size)...")
 
     if not test_bfh_connection():
         print("  Abbruch: BFH LLM nicht erreichbar.")
@@ -192,6 +196,7 @@ def main():
                     if typed:
                         avg = round(sum(c["price_chf"] for c in typed) / len(typed))
                         record_price_history(PROVIDER_ID, course_type, avg)
+                        print(f"  ✓ price_history {course_type}: avg CHF {avg}")
             except Exception as e:
                 msg = f"Fehler beim Insert: {e}"
                 print(f"  ✗ {msg}")

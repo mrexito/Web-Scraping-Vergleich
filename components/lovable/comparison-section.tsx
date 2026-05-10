@@ -47,7 +47,7 @@ export function ComparisonSection({providers, courseType}: ComparisonSectionProp
     }
     const queryString = params.toString();
     startTransition(() => {
-      router.replace(queryString ? `${pathname}?${queryString}` : pathname);
+      router.replace(queryString ? `${pathname}?${queryString}` : pathname, {scroll: false});
     });
   };
 
@@ -89,7 +89,7 @@ export function ComparisonSection({providers, courseType}: ComparisonSectionProp
               aria-label={t('compare.viewGrid')}
               className={cn(
                 'grid h-8 w-8 place-items-center rounded-md transition-colors',
-                view === 'grid' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+                view === 'grid' ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:text-foreground',
               )}
             >
               <LayoutGrid className="h-4 w-4" />
@@ -99,7 +99,7 @@ export function ComparisonSection({providers, courseType}: ComparisonSectionProp
               aria-label={t('compare.viewList')}
               className={cn(
                 'grid h-8 w-8 place-items-center rounded-md transition-colors',
-                view === 'list' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+                view === 'list' ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:text-foreground',
               )}
             >
               <ListIcon className="h-4 w-4" />
@@ -125,7 +125,7 @@ export function ComparisonSection({providers, courseType}: ComparisonSectionProp
                 className={cn(
                   'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
                   isActive
-                    ? 'bg-background text-foreground shadow-sm'
+                    ? 'bg-primary/10 text-primary font-medium'
                     : 'text-muted-foreground hover:text-foreground',
                 )}
               >

@@ -1,8 +1,10 @@
 """
-sGAI_nachhilfeAkademieScraper.py (refactored)
+sGAI_nachhilfeAkademieScraper.py (NATIV ScrapeGraphAI)
 ==============================================
 ScrapeGraphAI-Scraper für Nachhilfe Akademie.
-Scrapt 3 Seiten: Übersicht (Kurse + Metadaten) + 2 Preisseiten (Langgymi, Kurzgymi).
+Scrapt 3 Seiten: Übersicht (Kurse + Metadaten) + 2 Preisseiten
+(Langgymi, Kurzgymi). Nutzt nativ SmartScraperGraph mit graph_config
+chunk_size=4000 aus scrape_utils.
 """
 
 import json
@@ -29,8 +31,8 @@ BASE_URL           = "https://nachhilfeakademie.ch"
 OVERVIEW_URL       = f"{BASE_URL}/gymivorbereitung-kanton-zuerich/"
 PREISE_LANG_URL    = f"{BASE_URL}/preise-gymivorbereitung-langgymnasium/"
 PREISE_KURZ_URL    = f"{BASE_URL}/preise-gymivorbereitung-kurzgymnasium/"
-ANMELDUNG_LANG_URL = f"{BASE_URL}/anmeldung-langzeitgymnasium/"
-ANMELDUNG_KURZ_URL = f"{BASE_URL}/anmeldung-kurzgymnasium/"
+
+
 
 
 PROMPT_OVERVIEW = """
@@ -51,7 +53,10 @@ Für jeden Kurs gib zurück:
 
 Extrahiere zusätzlich Anbieter-Metadaten:
 - aufsatzkorrektur, einstufungstest, e_learning, pruefungsarchiv, beratungsgespraech,
-  lernunterlagen, pruefungssimulation, einzelkurse (alle als bool)
+  lernunterlagen, pruefungssimulation, einzelkurse, unterstuetzung_ausserhalb (alle als bool)
+- unterstuetzung_ausserhalb: true wenn Nachholoptionen, Aufholstunden, Hausaufgabenbetreuung,
+  Wiederholung verpasster Lektionen oder Unterstützung ausserhalb der Unterrichtszeiten
+  angeboten wird
 - max_teilnehmer: Zahl
 - standorte: Liste aller Standorte
 
@@ -106,7 +111,7 @@ def transform_courses(raw_courses: list, preise_lang: dict, preise_kurz: dict) -
         is_ferienkurs = "ferienkurs" in kursart or "intensiv" in kursart
 
         p = preise_kurz if course_type == "kurzgymi" else preise_lang
-        anmeldung_url = ANMELDUNG_KURZ_URL if course_type == "kurzgymi" else ANMELDUNG_LANG_URL
+        anmeldung_url = OVERVIEW_URL
 
         price = parse_price(
             p.get("preis_ferienkurs_gruppe") if is_ferienkurs
@@ -128,7 +133,7 @@ def transform_courses(raw_courses: list, preise_lang: dict, preise_kurz: dict) -
             "start_date":      convert_date(c.get("start_date")),
             "end_date":        convert_date(c.get("end_date")),
             "course_type":     course_type,
-            "course_url":      anmeldung_url,
+            "course_url":      OVERVIEW_URL,
             "is_online":       False,
             "verfuegbarkeit":  "viele",
             "last_scraped_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -159,10 +164,11 @@ def save_metadata(metadata: dict) -> None:
     print("  ✓ GymiProviders aktualisiert")
 
     supabase.table("CourseDetails").update({
-        "Pruefungsarchiv":       bool(metadata.get("pruefungsarchiv", False)),
-        "Beratungsgespraech":    bool(metadata.get("beratungsgespraech", False)),
-        "Eigene Lernunterlagen": bool(metadata.get("lernunterlagen", False)),
-        "Standort":              standort_str,
+        "Pruefungsarchiv":                          bool(metadata.get("pruefungsarchiv", False)),
+        "Beratungsgespraech":                       bool(metadata.get("beratungsgespraech", False)),
+        "Eigene Lernunterlagen":                    bool(metadata.get("lernunterlagen", False)),
+        "Unterstuezung ausserhalb Unterrichtszeit": bool(metadata.get("unterstuetzung_ausserhalb", False)),
+        "Standort":                                 standort_str,
     }).eq("ID", PROVIDER_ID).execute()
     print("  ✓ CourseDetails aktualisiert")
 

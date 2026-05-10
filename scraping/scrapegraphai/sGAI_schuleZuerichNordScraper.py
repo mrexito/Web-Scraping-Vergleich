@@ -45,7 +45,10 @@ PROMPT_OVERVIEW = """
 Du bist ein Datenextraktions-Assistent. Extrahiere Anbieter-Metadaten:
 
 - aufsatzkorrektur, einstufungstest, e_learning, pruefungsarchiv, beratungsgespraech,
-  lernunterlagen, pruefungssimulation, einzelkurse (alle als bool)
+  lernunterlagen, pruefungssimulation, einzelkurse, unterstuetzung_ausserhalb (alle als bool)
+- unterstuetzung_ausserhalb: true wenn Nachholoptionen, Aufholstunden, Hausaufgabenbetreuung,
+  Wiederholung verpasster Lektionen oder Unterstützung ausserhalb der Unterrichtszeiten
+  angeboten wird
 - max_teilnehmer: Zahl oder null
 - standort: Adresse
 - ausgebuchte_kurse: Liste der als AUSGEBUCHT markierten Kurse
@@ -182,10 +185,11 @@ def save_metadata(metadata: dict) -> None:
     print("  ✓ GymiProviders aktualisiert")
 
     supabase.table("CourseDetails").update({
-        "Pruefungsarchiv":       bool(metadata.get("pruefungsarchiv", False)),
-        "Beratungsgespraech":    bool(metadata.get("beratungsgespraech", False)),
-        "Eigene Lernunterlagen": bool(metadata.get("lernunterlagen", False)),
-        "Standort":              standort,
+        "Pruefungsarchiv":                          bool(metadata.get("pruefungsarchiv", False)),
+        "Beratungsgespraech":                       bool(metadata.get("beratungsgespraech", False)),
+        "Eigene Lernunterlagen":                    bool(metadata.get("lernunterlagen", False)),
+        "Unterstuezung ausserhalb Unterrichtszeit": bool(metadata.get("unterstuetzung_ausserhalb", False)),
+        "Standort":                                 standort,
     }).eq("ID", PROVIDER_ID).execute()
     print("  ✓ CourseDetails aktualisiert")
 

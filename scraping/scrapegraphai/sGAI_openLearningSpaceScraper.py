@@ -52,7 +52,10 @@ Für jeden Kurs gib zurück:
 
 Extrahiere zusätzlich Anbieter-Metadaten:
 - aufsatzkorrektur, einstufungstest, e_learning, pruefungsarchiv, beratungsgespraech,
-  lernunterlagen, pruefungssimulation, einzelkurse (alle als bool)
+  lernunterlagen, pruefungssimulation, einzelkurse, unterstuetzung_ausserhalb (alle als bool)
+- unterstuetzung_ausserhalb: true wenn Nachholoptionen, Aufholstunden, Hausaufgabenbetreuung,
+  Wiederholung verpasster Lektionen oder Unterstützung ausserhalb der Unterrichtszeiten
+  angeboten wird
 - max_teilnehmer: Zahl
 - standorte: Liste aller Standorte
 
@@ -73,7 +76,7 @@ Für jeden Kurs gib zurück:
 - max_teilnehmer: Zahl
 - availability: "ausgebucht" oder "viele"
 
-Extrahiere zusätzlich Metadaten (dieselben Felder wie in der Übersicht).
+Extrahiere zusätzlich Metadaten (dieselben Felder wie in der Übersicht, inkl. unterstuetzung_ausserhalb).
 
 Antworte NUR mit reinem JSON: {"courses": [...], "metadata": {...}}
 """
@@ -171,10 +174,11 @@ def save_metadata(metadata: dict) -> None:
     print("  ✓ GymiProviders aktualisiert")
 
     supabase.table("CourseDetails").update({
-        "Pruefungsarchiv":       bool(metadata.get("pruefungsarchiv", False)),
-        "Beratungsgespraech":    bool(metadata.get("beratungsgespraech", False)),
-        "Eigene Lernunterlagen": bool(metadata.get("lernunterlagen", False)),
-        "Standort":              standort_str,
+        "Pruefungsarchiv":                          bool(metadata.get("pruefungsarchiv", False)),
+        "Beratungsgespraech":                       bool(metadata.get("beratungsgespraech", False)),
+        "Eigene Lernunterlagen":                    bool(metadata.get("lernunterlagen", False)),
+        "Unterstuezung ausserhalb Unterrichtszeit": bool(metadata.get("unterstuetzung_ausserhalb", False)),
+        "Standort":                                 standort_str,
     }).eq("ID", PROVIDER_ID).execute()
     print("  ✓ CourseDetails aktualisiert")
 

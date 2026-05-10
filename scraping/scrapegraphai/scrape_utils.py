@@ -8,7 +8,10 @@ Was hier drin ist:
 ------------------
 1.  ENV-Loader + Supabase-Client (einmalig initialisiert)
 2.  BFH LLM Verbindung testen (test_bfh_connection)
-3.  LLM-Setup (llm_instance, graph_config) — wird von allen Scrapern verwendet
+3.  LLM-Setup (llm_instance, graph_config) — wird von allen Scrapern verwendet.
+    Wichtig: graph_config enthält chunk_size=4000 für ScrapeGraphAIs ParseNode,
+    um Context-Window-Limits des BFH-LLMs zu respektieren (Issues #768, #853
+    im Framework-Repo).
 4.  Datenextraktion: parse_price, convert_date, extract_json_from_string
 5.  Metadaten-Merging: merge_metadata
 6.  Datenbank-Logging:
@@ -32,9 +35,6 @@ Benutzung im Scraper:
     with ScrapeRun(SCRAPER_METHOD, PROVIDER_ID) as run:
         # scraping-logik
         run.courses_found += len(courses)
-        # bei fehler:
-        #   run.error_count += 1
-        #   log_scrape_error(run.id, PROVIDER_ID, "SCRAPING_ERROR", str(e))
 """
 
 import os
@@ -52,9 +52,12 @@ from supabase import create_client, Client
 # =====================================================================
 # 1. ENV + SUPABASE-CLIENT
 # =====================================================================
-# Die .env liegt 3 Ordner höher als die scrapeGraphAi-Scraper
+# scrape_utils.py liegt in scraping/scrapegraphai/. Die .env liegt im
+# Projekt-Root, also 2 Ebenen höher.
 _SCRAPE_UTILS_DIR = os.path.dirname(os.path.abspath(__file__))
-_ENV_PATH = os.path.join(_SCRAPE_UTILS_DIR, "..", "..", "..", ".env")
+_ENV_PATH = os.path.normpath(
+    os.path.join(_SCRAPE_UTILS_DIR, "..", "..", ".env")
+)
 load_dotenv(_ENV_PATH)
 
 SUPABASE_URL  = os.getenv("NEXT_PUBLIC_SUPABASE_URL")
@@ -65,8 +68,8 @@ BFH_MODEL     = "gpt-oss:120b"
 
 if not SUPABASE_URL or not SUPABASE_KEY:
     raise RuntimeError(
-        "NEXT_PUBLIC_SUPABASE_URL oder SUPABASE_SERVICE_ROLE_KEY "
-        "fehlen in .env — prüfe den Pfad."
+        f"NEXT_PUBLIC_SUPABASE_URL oder SUPABASE_SERVICE_ROLE_KEY "
+        f"fehlen in .env (gesucht unter: {_ENV_PATH})"
     )
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -81,11 +84,24 @@ llm_instance = ChatOpenAI(
     base_url=BFH_BASE_URL,
 )
 
+# Konfiguration für ScrapeGraphAIs SmartScraperGraph.
+#
+# Wichtig — chunk_size:
+#   ScrapeGraphAIs ParseNode unterteilt HTML in Chunks von chunk_size Tokens.
+#   Bei zu großen Chunks erreicht das LLM seine Context-Limits (Issues #768,
+#   #853 im Framework-Repo). Wir setzen chunk_size konservativ auf 4000 Tokens,
+#   sodass auch bei großen Seiten jeder Chunk ins Context-Window des
+#   BFH-gehosteten gpt-oss:120b passt.
+#
+# Wichtig — model_tokens:
+#   Setzt das angenommene Context-Window des LLMs. Beeinflusst die interne
+#   Chunk-Dimensionierung von ScrapeGraphAI.
 graph_config = {
     "llm": {
         "model_instance": llm_instance,
         "model_tokens": 32000,
     },
+    "chunk_size": 4000,
     "verbose": True,
     "headless": True,
 }
@@ -132,38 +148,32 @@ def parse_price(raw) -> Optional[int]:
         .strip()
     )
 
-    # Erst exakt versuchen
     try:
         return int(cleaned)
     except (ValueError, TypeError):
         pass
 
-    # Dann Regex-Fallback
     match = re.search(r"\d{3,5}", cleaned)
     return int(match.group()) if match else None
 
 
 def convert_date(raw) -> Optional[str]:
     """
-    Konvertiert unterschiedliche Datums-Formate zu 'YYYY-MM-DD'.
+    Konvertiert Datums-Formate zu 'YYYY-MM-DD'.
     Unterstützt: '27.08.2025', '2025-08-27', '27.8.25'.
-    Gibt None zurück, wenn nicht parsebar.
     """
     if not raw:
         return None
     raw = str(raw).strip()
 
-    # Format: TT.MM.JJJJ oder T.M.JJJJ
     m = re.match(r"^(\d{1,2})\.(\d{1,2})\.(\d{4})$", raw)
     if m:
         return f"{m.group(3)}-{m.group(2).zfill(2)}-{m.group(1).zfill(2)}"
 
-    # Format: TT.MM.JJ (zweistellig) → 20JJ
     m = re.match(r"^(\d{1,2})\.(\d{1,2})\.(\d{2})$", raw)
     if m:
         return f"20{m.group(3)}-{m.group(2).zfill(2)}-{m.group(1).zfill(2)}"
 
-    # Format: JJJJ-MM-TT (bereits ISO)
     m = re.match(r"^(\d{4})-(\d{2})-(\d{2})$", raw)
     if m:
         return raw
@@ -172,11 +182,7 @@ def convert_date(raw) -> Optional[str]:
 
 
 def extract_json_from_string(raw: str) -> dict:
-    """
-    Extrahiert JSON aus einem LLM-Output, auch wenn er Präfixe wie
-    <|channel|>...<|/channel|> oder Markdown-Code-Fences enthält.
-    Gibt {} zurück, wenn kein valides JSON gefunden wurde.
-    """
+    """Extrahiert JSON aus einem LLM-Output (auch mit Präfixen/Markdown)."""
     if not raw:
         return {}
     raw = str(raw)
@@ -196,14 +202,8 @@ def extract_json_from_string(raw: str) -> dict:
 # =====================================================================
 def merge_metadata(base: dict, extra: dict) -> dict:
     """
-    Kombiniert zwei Metadaten-Dicts aus verschiedenen Scrape-Durchgängen
-    (z.B. Langzeit + Kurzzeit).
-
-    Regeln:
-    - Neuer Key → wird übernommen
-    - Bool-Werte: wenn eines true ist, Gesamt true (OR-Verknüpfung)
-    - max_teilnehmer → das Maximum gewinnt
-    - Sonst: existierender Wert bleibt, außer er ist None
+    Kombiniert zwei Metadaten-Dicts. Booleans → ODER, max_teilnehmer →
+    Maximum, standorte (list) → Vereinigungsmenge.
     """
     result = dict(base)
     for key, val in extra.items():
@@ -225,7 +225,14 @@ def merge_metadata(base: dict, extra: dict) -> dict:
                     result[key] = val
             continue
 
-        # Fallback: nur setzen, wenn base-Wert None ist
+        if key == "standorte" and isinstance(val, list):
+            existing = result.get(key) or []
+            if isinstance(existing, list):
+                result[key] = sorted(set(existing + val))
+            else:
+                result[key] = val
+            continue
+
         if result.get(key) is None:
             result[key] = val
 
@@ -240,10 +247,6 @@ VALID_STATUSES = ("success", "partial", "failed")
 
 
 def start_scrape_run(scraper_method: str, provider_id: int) -> Optional[str]:
-    """
-    Legt eine neue Zeile in scrape_runs an und gibt die Run-ID (UUID) zurück.
-    Gibt None zurück, wenn der Insert fehlschlägt.
-    """
     if scraper_method not in VALID_METHODS:
         raise ValueError(
             f"scraper_method muss einer von {VALID_METHODS} sein, "
@@ -274,16 +277,8 @@ def start_scrape_run(scraper_method: str, provider_id: int) -> Optional[str]:
         return None
 
 
-def finish_scrape_run(
-    run_id: str,
-    status: str,
-    courses_found: int = 0,
-    error_count: int = 0,
-) -> None:
-    """
-    Schliesst einen Scrape-Run ab und aktualisiert die Metriken.
-    status muss 'success', 'partial' oder 'failed' sein.
-    """
+def finish_scrape_run(run_id: str, status: str, courses_found: int = 0,
+                      error_count: int = 0) -> None:
     if status not in VALID_STATUSES:
         raise ValueError(
             f"status muss einer von {VALID_STATUSES} sein, war aber '{status}'."
@@ -304,17 +299,8 @@ def finish_scrape_run(
         print(f"✗ Fehler beim Beenden des Scrape-Runs: {e}")
 
 
-def log_scrape_error(
-    run_id: Optional[str],
-    provider_id: int,
-    error_type: str,
-    message: str,
-    html_snapshot: Optional[str] = None,
-) -> None:
-    """
-    Loggt einen Fehler in scrape_errors.
-    html_snapshot wird auf 4000 Zeichen gekürzt (fürs Self-Healing später).
-    """
+def log_scrape_error(run_id: Optional[str], provider_id: int, error_type: str,
+                     message: str, html_snapshot: Optional[str] = None) -> None:
     if run_id is None:
         print(f"  (Kein run_id — Fehler nur auf Konsole) {error_type}: {message}")
         return
@@ -333,12 +319,8 @@ def log_scrape_error(
         print(f"✗ Fehler beim Loggen des Scrape-Fehlers: {e}")
 
 
-def record_price_history(
-    provider_id: int,
-    course_type: str,
-    price_chf: Optional[int],
-) -> None:
-    """Speichert einen Preisdatenpunkt in price_history."""
+def record_price_history(provider_id: int, course_type: str,
+                         price_chf: Optional[int]) -> None:
     if price_chf is None:
         return
     try:
@@ -357,20 +339,7 @@ def record_price_history(
 # 6. SCRAPERUN CONTEXT MANAGER
 # =====================================================================
 class ScrapeRun:
-    """
-    Kontext-Manager, der automatisch:
-    - beim Betreten einen scrape_runs-Eintrag anlegt
-    - beim Verlassen (auch bei Exceptions) finish_scrape_run() aufruft
-    - bei Exception: Status = 'failed', sonst abhängig von error_count/courses_found
-
-    Benutzung:
-        with ScrapeRun("scrapegraphai", PROVIDER_ID) as run:
-            # scraping-logik
-            run.courses_found += len(courses)
-            if some_error:
-                run.error_count += 1
-                log_scrape_error(run.id, PROVIDER_ID, "SOME_ERROR", "msg")
-    """
+    """Context Manager für scrape_runs-Lifecycle."""
 
     def __init__(self, scraper_method: str, provider_id: int):
         self.scraper_method = scraper_method
@@ -388,9 +357,7 @@ class ScrapeRun:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
-        # Status ableiten
         if exc_type is not None:
-            # Unbehandelte Exception → failed
             self.error_count += 1
             try:
                 log_scrape_error(
@@ -412,5 +379,4 @@ class ScrapeRun:
         if self.id:
             finish_scrape_run(self.id, status, self.courses_found, self.error_count)
 
-        # False = Exception nicht schlucken
         return False

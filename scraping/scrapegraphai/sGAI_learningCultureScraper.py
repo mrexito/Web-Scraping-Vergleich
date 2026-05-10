@@ -1,8 +1,17 @@
 """
-sGAI_learningCultureScraper.py (refactored)
-============================================
-ScrapeGraphAI-Scraper für Learning Culture.
-Scrapt mehrere Seiten mit unterschiedlichen Prompts (Langgymi, Kurzgymi T1/T1+, Kurzgymi T2, Probezeit).
+sGAI_learningCultureScraper.py
+===============================
+ScrapeGraphAI-Scraper für Learning Culture (Provider 4).
+
+Nutzt nativ SmartScraperGraph aus ScrapeGraphAI mit der erweiterten
+graph_config (chunk_size=4000) aus scrape_utils.
+
+Scrapt 5 Schritte:
+  1. Metadaten von Langgymi-Seite
+  2. Langgymi-Kurse
+  3. Kurzgymi Teil 1+/1
+  4. Kurzgymi Teil 2
+  5. Probezeit-Kurse
 """
 
 import json
@@ -43,23 +52,40 @@ def extract_json_from_string(raw: str) -> dict:
 PROMPT_META = (
     "Du bist ein Datenextraktions-Assistent. Extrahiere NUR die Metadaten (keine Kurse):\n"
     "- aufsatzkorrektur, einstufungstest, e_learning, pruefungsarchiv, beratungsgespraech, "
-    "lernunterlagen, pruefungssimulation, einzelkurse (alle als bool)\n"
+    "lernunterlagen, pruefungssimulation, einzelkurse, unterstuetzung_ausserhalb (alle als bool)\n"
+    "- unterstuetzung_ausserhalb: true wenn Nachholoptionen, Aufholstunden, Hausaufgabenbetreuung, "
+    "Wiederholung verpasster Lektionen oder Unterstützung ausserhalb der Unterrichtszeiten "
+    "angeboten wird\n"
     "- max_teilnehmer: Zahl\n"
     "- standorte: Liste\n"
     'Antworte NUR mit reinem JSON: {"metadata": {...}}'
 )
 
+# Robusterer Langgymi-Prompt:
+# Vorher zu spezifisch auf "Teil 1+, Teil 1, Teil 2" gezielt — auf der
+# Langgymi-Seite heißen die Kurse anders (z.B. nur "Kurs", "Vorbereitung",
+# "Intensivkurs"). Jetzt: alles extrahieren was wie ein Kurs aussieht.
 PROMPT_LANGGYMI_KURSE = (
-    "Du bist ein Datenextraktions-Assistent. Extrahiere ALLE Kurstermine von dieser Seite.\n"
-    "Abschnitte: Teil 1+ (ab März, CHF 3190), Teil 1 (ab Mai/Juni/August, CHF 1890), "
-    "Teil 2 (CHF 2110), Themenkurse/Ferienkurse, Intensivkurse Sportferien (~CHF 980), "
-    "Simulationsprüfung (~CHF 290).\n"
-    "Für jeden Kurs:\n"
-    "- title: Kursname\n"
-    "- weekday, course_time, location\n"
-    "- start_date, end_date (TT.MM.JJJJ)\n"
-    "- price_chf (Zahl)\n"
-    "- availability: 'ausgebucht' oder 'viele'\n"
+    "Du bist ein Datenextraktions-Assistent. Extrahiere ALLE Kurstermine, "
+    "Kurse oder Anmelde-Einträge die auf dieser Seite erscheinen — egal "
+    "wie sie genannt sind (z.B. 'Kurs', 'Vorbereitungskurs', 'Teil 1', "
+    "'Teil 1+', 'Teil 2', 'Intensivkurs', 'Sportferienkurs', "
+    "'Simulationsprüfung', 'Themenkurs', oder einfach nur Datums-/Zeit-Angaben "
+    "in einer Tabelle).\n\n"
+    "Typische Hinweise auf einen Kurs: Wochentag + Uhrzeit + Datum + Preis + Ort.\n"
+    "Wenn du eine Tabelle mit Anmelde-Buttons siehst, extrahiere JEDE Zeile.\n\n"
+    "Für jeden Kurs gib zurück:\n"
+    "- title: Was der Kurs auf der Seite heißt (z.B. 'Teil 1', 'Kurs A', "
+    "'Vorbereitungskurs', 'Intensivkurs Herbstferien'). Wenn kein Name "
+    "erkennbar: 'Gymivorbereitung'.\n"
+    "- weekday: Wochentag (Montag, Mittwoch, Samstag, ...)\n"
+    "- course_time: Kurszeit (z.B. '13:30 - 16:45')\n"
+    "- location: Ort (z.B. 'Zürich Stadelhofen', 'Winterthur', 'Horgen')\n"
+    "- start_date, end_date: Format TT.MM.JJJJ\n"
+    "- price_chf: Preis als Zahl\n"
+    "- availability: 'ausgebucht' wenn ausgebucht, sonst 'viele'\n\n"
+    "WICHTIG: Auch wenn die Kursnamen nicht 'Teil 1+/1/2' sind — extrahiere "
+    "trotzdem alles. Lieber zu viele Kurse als zu wenige.\n"
     'Antworte NUR mit reinem JSON: {"courses": [...]}'
 )
 
@@ -92,6 +118,7 @@ PROMPT_PROBEZEIT = (
 
 
 def scrape_page(url: str, prompt: str) -> dict:
+    """Native ScrapeGraphAI mit graph_config (inkl. chunk_size)."""
     print(f"\n  Scrapt: {url}")
     try:
         scraper = SmartScraperGraph(prompt=prompt, source=url, config=graph_config)
@@ -183,10 +210,11 @@ def save_metadata(metadata: dict) -> None:
     print("  ✓ GymiProviders aktualisiert")
 
     supabase.table("CourseDetails").update({
-        "Pruefungsarchiv":       bool(metadata.get("pruefungsarchiv", False)),
-        "Beratungsgespraech":    bool(metadata.get("beratungsgespraech", False)),
-        "Eigene Lernunterlagen": bool(metadata.get("lernunterlagen", False)),
-        "Standort":              standort_str,
+        "Pruefungsarchiv":                          bool(metadata.get("pruefungsarchiv", False)),
+        "Beratungsgespraech":                       bool(metadata.get("beratungsgespraech", False)),
+        "Eigene Lernunterlagen":                    bool(metadata.get("lernunterlagen", False)),
+        "Unterstuezung ausserhalb Unterrichtszeit": bool(metadata.get("unterstuetzung_ausserhalb", False)),
+        "Standort":                                 standort_str,
     }).eq("ID", PROVIDER_ID).execute()
     print("  ✓ CourseDetails aktualisiert")
 
@@ -212,7 +240,7 @@ def _scrape_block(run, step_name: str, url: str, prompt: str,
 
 
 def main():
-    print(f"Starte {PROVIDER_NAME} Scraper (ScrapeGraphAI + BFH LLM)...")
+    print(f"Starte {PROVIDER_NAME} Scraper (NATIV ScrapeGraphAI + chunk_size)...")
 
     if not test_bfh_connection():
         print("  Abbruch: BFH LLM nicht erreichbar.")
@@ -221,7 +249,6 @@ def main():
     with ScrapeRun(SCRAPER_METHOD, PROVIDER_ID) as run:
         metadata = {}
 
-        # Schritt 1: Metadaten von Langgymi-Seite
         try:
             print(f"\n  Schritt 1: Metadaten")
             meta_result = scrape_page(LANGGYMI_URL, PROMPT_META)
@@ -273,6 +300,7 @@ def main():
                     if typed:
                         avg = round(sum(c["price_chf"] for c in typed) / len(typed))
                         record_price_history(PROVIDER_ID, course_type, avg)
+                        print(f"  ✓ price_history {course_type}: avg CHF {avg}")
             except Exception as e:
                 log_scrape_error(run.id, PROVIDER_ID, "INSERT_ERROR", str(e))
                 run.error_count += 1
