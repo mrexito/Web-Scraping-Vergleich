@@ -26,7 +26,7 @@ the UI.
 
 ## Self-Healing Loop
 
-The `self-healing/` module monitors `scrape_errors` and uses Gemini 1.5 Flash to
+The `self-healing/` module monitors `scrape_errors` and uses Gemini 2.5 Flash to
 regenerate CSS selectors when a scrape fails. The loop:
 
 1. Detects the error and logs the first 4,000 chars of HTML.

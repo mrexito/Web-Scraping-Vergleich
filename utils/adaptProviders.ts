@@ -3,6 +3,12 @@ import type { Course as DbCourse } from '@/schemas/courseSchema';
 import type { CourseDetail } from '@/schemas/courseDetailSchema';
 import type { Provider, Course as ProviderCourse, Availability } from '@/lib/mock-providers';
 
+// =====================================================================
+// TYPES
+// =====================================================================
+
+export type CourseTypeFilter = 'langgymi' | 'kurzgymi' | 'both';
+
 export interface CriteriaWeights {
   price: number;
   quality: number;
@@ -12,6 +18,19 @@ export interface CriteriaWeights {
   digital: number;
 }
 
+export interface SubScores {
+  price: number;       // 0..1
+  quality: number;     // 0..1
+  location: number;    // 0..1
+  flex: number;        // 0..1
+  services: number;    // 0..1
+  digital: number;     // 0..1
+}
+
+// =====================================================================
+// DEFAULTS & URL-PARAMETER-PARSER
+// =====================================================================
+
 export const DEFAULT_WEIGHTS: CriteriaWeights = {
   price: 17,
   quality: 17,
@@ -20,6 +39,8 @@ export const DEFAULT_WEIGHTS: CriteriaWeights = {
   services: 17,
   digital: 16,
 };
+
+export const DEFAULT_COURSE_TYPE: CourseTypeFilter = 'langgymi';
 
 export function parseWeightsFromString(raw: string | undefined): CriteriaWeights {
   if (!raw) return DEFAULT_WEIGHTS;
@@ -38,6 +59,15 @@ export function parseWeightsFromString(raw: string | undefined): CriteriaWeights
 export function serializeWeights(w: CriteriaWeights): string {
   return [w.price, w.quality, w.location, w.flex, w.services, w.digital].join(',');
 }
+
+export function parseCourseTypeFromString(raw: string | undefined): CourseTypeFilter {
+  if (raw === 'kurzgymi' || raw === 'langgymi' || raw === 'both') return raw;
+  return DEFAULT_COURSE_TYPE;
+}
+
+// =====================================================================
+// HILFSFUNKTIONEN
+// =====================================================================
 
 function mapAvailability(courses: DbCourse[]): Availability {
   if (courses.some((c) => c.verfuegbarkeit === 'viele')) return 'viele_plaetze';
@@ -76,47 +106,92 @@ function uniqueTeachingDays(courses: DbCourse[]): string[] {
   return order.filter((d) => days.has(d));
 }
 
-interface SubScores {
-  price: number;
-  quality: number;
-  location: number;
-  flex: number;
-  services: number;
-  digital: number;
+// =====================================================================
+// KURSTYP-LOGIK
+// =====================================================================
+
+/**
+ * Liefert den passenden Preis abhängig vom gewählten Kurstyp.
+ */
+function getProviderPrice(provider: GymiProvider, courseType: CourseTypeFilter): number | null {
+  if (courseType === 'langgymi') return provider['Preis Langzeit Kurs'] ?? null;
+  if (courseType === 'kurzgymi') return provider['Preis Intensiver Kurs'] ?? null;
+  return provider['Preis Langzeit Kurs'] ?? provider['Preis Intensiver Kurs'] ?? null;
 }
+
+function filterCoursesByType(courses: DbCourse[], courseType: CourseTypeFilter): DbCourse[] {
+  if (courseType === 'both') return courses;
+  return courses.filter((c) => c.course_type === courseType);
+}
+
+/**
+ * Prüft, ob ein Anbieter den gewählten Kurstyp anbietet.
+ * Quelle: CourseDetails.'Kursart (Intensiv- oder Langzeitkurs)'
+ *   - 'Beides'   → bietet beide Typen an
+ *   - 'Lang'     → nur Langzeit
+ *   - 'Intensiv' → nur Kurzzeit
+ *   - null       → unbekannt: defensiv anzeigen
+ */
+export function offersCourseType(
+  detail: CourseDetail | undefined,
+  courseType: CourseTypeFilter,
+): boolean {
+  if (courseType === 'both') return true;
+  const kursart = detail?.['Kursart (Intensiv- oder Langzeitkurs)'];
+  if (!kursart) return true;
+  if (kursart === 'Beides') return true;
+  if (courseType === 'langgymi') return kursart === 'Lang';
+  if (courseType === 'kurzgymi') return kursart === 'Intensiv';
+  return true;
+}
+
+// =====================================================================
+// SUB-SCORE-BERECHNUNG (zentrale MCDA-Logik, kurstyp-aware)
+// =====================================================================
 
 function calculateSubScores(
   provider: GymiProvider,
   detail: CourseDetail | undefined,
   providerCourses: DbCourse[],
+  courseType: CourseTypeFilter,
   priceRangeContext: { minPrice: number; maxPrice: number },
 ): SubScores {
-  const price = provider['Preis Langzeit Kurs'] ?? provider['Preis Intensiver Kurs'] ?? null;
+  // 1. PREIS — kurstyp-aware
+  const price = getProviderPrice(provider, courseType);
   let priceScore = 0.5;
   if (price !== null && priceRangeContext.maxPrice > priceRangeContext.minPrice) {
-    priceScore = 1 - (price - priceRangeContext.minPrice) / (priceRangeContext.maxPrice - priceRangeContext.minPrice);
+    priceScore =
+      1 - (price - priceRangeContext.minPrice) / (priceRangeContext.maxPrice - priceRangeContext.minPrice);
   }
 
-  const qualityScore = (detail?.Qualitaetsbewertung ?? 2) / 3;
+  // 2. QUALITÄT — Q=1 (beste) → 1.0, Q=2 → 0.66, Q=3 → 0.33
+  const q = detail?.Qualitaetsbewertung ?? 2;
+  const qualityScore = q === 1 ? 1 : q === 2 ? 2 / 3 : 1 / 3;
 
+  // 3. STANDORT — Anzahl unique Locations (max 5 → 1.0)
   const locCount = uniqueLocations(providerCourses).length;
   const locScore = Math.min(1, locCount / 5);
 
+  // 4. FLEXIBILITÄT — online + ausserhalb-Unterstützung + mehrere Wochentage
   const flexBools = [
     providerCourses.some((c) => c.is_online === true),
     detail?.['Unterstuezung ausserhalb Unterrichtszeit'] ?? false,
+    uniqueTeachingDays(providerCourses).length >= 3,
   ];
   const flexScore = flexBools.filter(Boolean).length / flexBools.length;
 
+  // 5. SERVICES — 6 Bools (Unterstützung ausserhalb wird in Flex gezählt, nicht hier)
   const serviceBools = [
     provider.Einstufungstest,
     provider.Aufsatzkorrektur,
+    provider.Pruefungssimultaion ?? false,
     detail?.Beratungsgespraech ?? false,
     detail?.['Eigene Lernunterlagen'] ?? false,
     detail?.Pruefungsarchiv ?? false,
   ];
   const serviceScore = serviceBools.filter(Boolean).length / serviceBools.length;
 
+  // 6. DIGITAL — E-Learning + Online-Prüfungen
   const digitalBools = [provider['E-Learning'], provider.Onlinepruefung];
   const digitalScore = digitalBools.filter(Boolean).length / digitalBools.length;
 
@@ -143,28 +218,101 @@ function applyWeights(sub: SubScores, w: CriteriaWeights): number {
   return Math.round(weighted * 100);
 }
 
+/**
+ * Liefert die einzelnen GEWICHTETEN Sub-Scores (für Breakdown-Anzeige
+ * in der Nutzwertanalyse-Page). Summe ergibt den Gesamt-Score.
+ */
+export function applyWeightsBreakdown(
+  sub: SubScores,
+  w: CriteriaWeights,
+): {
+  price: number;
+  quality: number;
+  location: number;
+  flex: number;
+  services: number;
+  digital: number;
+  total: number;
+} {
+  const totalWeight = w.price + w.quality + w.location + w.flex + w.services + w.digital;
+  if (totalWeight === 0) {
+    return { price: 0, quality: 0, location: 0, flex: 0, services: 0, digital: 0, total: 0 };
+  }
+  const price = Math.round((w.price / totalWeight) * sub.price * 100);
+  const quality = Math.round((w.quality / totalWeight) * sub.quality * 100);
+  const location = Math.round((w.location / totalWeight) * sub.location * 100);
+  const flex = Math.round((w.flex / totalWeight) * sub.flex * 100);
+  const services = Math.round((w.services / totalWeight) * sub.services * 100);
+  const digital = Math.round((w.digital / totalWeight) * sub.digital * 100);
+  const total = price + quality + location + flex + services + digital;
+  return { price, quality, location, flex, services, digital, total };
+}
+
+// =====================================================================
+// EXTENDED PROVIDER-TYP (mit Sub-Scores für Nutzwertanalyse-Page)
+// =====================================================================
+
+export interface ProviderWithBreakdown extends Provider {
+  subScores: SubScores;
+  weightedBreakdown: {
+    price: number;
+    quality: number;
+    location: number;
+    flex: number;
+    services: number;
+    digital: number;
+    total: number;
+  };
+  offersSelectedType: boolean;
+}
+
+// =====================================================================
+// HAUPT-FUNKTION
+// =====================================================================
+
+/**
+ * Wandelt rohe Supabase-Daten in UI-Provider um (kurstyp-gefiltert).
+ *
+ * Anbieter, die den gewählten Typ nicht anbieten, werden ausgeblendet.
+ * Bei courseType='both' werden alle Anbieter angezeigt.
+ */
 export function adaptProviders(
   providers: GymiProvider[],
   courses: DbCourse[],
   courseDetails: CourseDetail[],
   weights: CriteriaWeights = DEFAULT_WEIGHTS,
-): Provider[] {
-  const allPrices = providers
-    .map((p) => p['Preis Langzeit Kurs'] ?? p['Preis Intensiver Kurs'])
-    .filter((p): p is number => p !== null && p !== undefined);
+  courseType: CourseTypeFilter = DEFAULT_COURSE_TYPE,
+): ProviderWithBreakdown[] {
+  // 1. Anbieter, die den gewählten Typ nicht anbieten, AUSBLENDEN
+  const visibleProviders = providers.filter((p) => {
+    const detail = courseDetails.find((d) => d.ID === p.ID);
+    return offersCourseType(detail, courseType);
+  });
+
+  // 2. Preis-Range über die SICHTBAREN Anbieter (für faire Normalisierung)
+  const allPrices = visibleProviders
+    .map((p) => getProviderPrice(p, courseType))
+    .filter((price): price is number => price !== null && price !== undefined);
+
   const priceCtx = {
     minPrice: allPrices.length ? Math.min(...allPrices) : 0,
     maxPrice: allPrices.length ? Math.max(...allPrices) : 1,
   };
 
-  return providers.map((provider) => {
-    const providerCourses = courses.filter((c) => c.provider_id === provider.ID);
+  // 3. Adapter pro Anbieter
+  return visibleProviders.map((provider) => {
+    const allProviderCourses = courses.filter((c) => c.provider_id === provider.ID);
+    const filteredCourses = filterCoursesByType(allProviderCourses, courseType);
     const detail = courseDetails.find((d) => d.ID === provider.ID);
 
-    const locations = uniqueLocations(providerCourses);
-    const teachingDays = uniqueTeachingDays(providerCourses);
+    const sub = calculateSubScores(provider, detail, filteredCourses, courseType, priceCtx);
+    const score = applyWeights(sub, weights);
+    const breakdown = applyWeightsBreakdown(sub, weights);
 
-    const sampleCourses: ProviderCourse[] = providerCourses.slice(0, 3).map((c, i) => ({
+    const locations = uniqueLocations(filteredCourses);
+    const teachingDays = uniqueTeachingDays(filteredCourses);
+
+    const sampleCourses: ProviderCourse[] = filteredCourses.slice(0, 3).map((c, i) => ({
       id: `${provider.ID}-${i}`,
       label: c.title ?? `Kurs ${String.fromCharCode(65 + i)}`,
       type: c.course_type === 'kurzgymi' ? 'kurzgymi' : 'langgymi',
@@ -176,24 +324,24 @@ export function adaptProviders(
       originalPrice: c.price_regular_chf ?? undefined,
       discountUntil: c.discount_valid_until ?? undefined,
       availability:
-        c.verfuegbarkeit === 'viele' ? 'viele_plaetze'
-        : c.verfuegbarkeit === 'wenige' ? 'wenige_plaetze'
-        : c.verfuegbarkeit === 'ausgebucht' ? 'ausgebucht'
-        : 'viele_plaetze',
+        c.verfuegbarkeit === 'viele'
+          ? 'viele_plaetze'
+          : c.verfuegbarkeit === 'wenige'
+          ? 'wenige_plaetze'
+          : c.verfuegbarkeit === 'ausgebucht'
+          ? 'ausgebucht'
+          : 'viele_plaetze',
     }));
-
-    const sub = calculateSubScores(provider, detail, providerCourses, priceCtx);
-    const score = applyWeights(sub, weights);
 
     return {
       id: String(provider.ID),
       name: provider.Name,
       logoUrl: null,
       score,
-      price: provider['Preis Langzeit Kurs'] ?? provider['Preis Intensiver Kurs'] ?? null,
+      price: getProviderPrice(provider, courseType),
       locations: locations.length > 0 ? locations : ['Zürich'],
       teachingDays: teachingDays.length > 0 ? teachingDays : ['—'],
-      availability: mapAvailability(providerCourses),
+      availability: mapAvailability(filteredCourses),
       quality: (detail?.Qualitaetsbewertung ?? 2) as 1 | 2 | 3,
       maxParticipants: provider['Maximale Anzahl der Teilnehmer'] ?? '—',
       websiteUrl: (provider.URL && provider.URL[0]) || '#',
@@ -203,10 +351,13 @@ export function adaptProviders(
       hasAufsatzkorrektur: provider.Aufsatzkorrektur,
       hasLernunterlagen: detail?.['Eigene Lernunterlagen'] ?? false,
       hasBeratungsgespraech: detail?.Beratungsgespraech ?? false,
-      hasDistanceLearning: providerCourses.some((c) => c.is_online === true),
+      hasDistanceLearning: filteredCourses.some((c) => c.is_online === true),
       hasDigitalMaterials: provider['E-Learning'],
       hasCatchUpOptions: detail?.['Unterstuezung ausserhalb Unterrichtszeit'] ?? false,
       courses: sampleCourses,
+      subScores: sub,
+      weightedBreakdown: breakdown,
+      offersSelectedType: true,
     };
   });
 }

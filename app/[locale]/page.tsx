@@ -2,7 +2,11 @@
 import {Hero} from '@/components/lovable/hero';
 import {ComparisonSection} from '@/components/lovable/comparison-section';
 import {ZapTimeline} from '@/components/lovable/zap-timeline';
-import {adaptProviders, parseWeightsFromString} from '@/utils/adaptProviders';
+import {
+  adaptProviders,
+  parseWeightsFromString,
+  parseCourseTypeFromString,
+} from '@/utils/adaptProviders';
 import {createServerSupabaseClient} from '@/utils/supabase/server';
 import {parseGymiProviders} from '@/schemas/gymiProviderSchema';
 import {parseCourseDetails} from '@/schemas/courseDetailSchema';
@@ -24,13 +28,14 @@ const HomePage = async ({
   searchParams,
 }: {
   params: Promise<{locale: string}>;
-  searchParams: Promise<{w?: string}>;
+  searchParams: Promise<{w?: string; type?: string}>;
 }) => {
   const {locale} = await params;
   setRequestLocale(locale);
 
   const sp = await searchParams;
   const weights = parseWeightsFromString(sp.w);
+  const courseType = parseCourseTypeFromString(sp.type);
 
   const supabase = await createServerSupabaseClient();
   const today = new Date().toISOString().slice(0, 10);
@@ -84,7 +89,16 @@ const HomePage = async ({
   const validCourses = parseCourses(rawCourses ?? []);
   const nextZap = parseZapInfos(rawNextZap ?? []);
 
-  const providers = adaptProviders(validProviders, validCourses, validCourseDetails, weights);
+  const providers = adaptProviders(
+    validProviders,
+    validCourses,
+    validCourseDetails,
+    weights,
+    courseType,
+  );
+
+  // Hero-Stats sollen die VOLLE Datenbasis zeigen (nicht gefiltert),
+  // damit "12 Anbieter, 145 Kurse" ehrlich bleibt
   const nextExamDate = nextZap[0]?.exam_date
     ? formatDate(nextZap[0].exam_date, locale)
     : null;
@@ -92,12 +106,12 @@ const HomePage = async ({
   return (
     <>
       <Hero
-        providerCount={providers.length}
+        providerCount={validProviders.length}
         courseCount={validCourses.length}
         lastUpdated={new Date()}
         nextExamDate={nextExamDate}
       />
-      <ComparisonSection providers={providers} />
+      <ComparisonSection providers={providers} courseType={courseType} />
       <ZapTimeline locale={locale} />
     </>
   );

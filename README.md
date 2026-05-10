@@ -15,7 +15,7 @@ This thesis covers:
 
 - **Web scraping system** with three frameworks (Puppeteer, ScrapeGraphAI, Bright Data)
   for comparative evaluation
-- **AI-based self-healing loop** using BFH LLM and Gemini 1.5 Flash to detect and recover
+- **AI-based self-healing loop** using BFH LLM and Gemini 2.5 Flash to detect and recover
   from selector breakages
 - **Weighted scoring model** with 6 evaluation criteria (price, quality, location,
   flexibility, services, digital learning environment)
@@ -62,7 +62,7 @@ This structure provides:
 - **Puppeteer** — Browser automation (TypeScript)
 - **ScrapeGraphAI** — LLM-based extraction with BFH LLM (Python)
 - **Bright Data** — Proxy-based scraping (Python)
-- **Self-Healing Loop** — Gemini 1.5 Flash for selector regeneration
+- **Self-Healing Loop** — Gemini 2.5 Flash for selector regeneration
 
 ---
 
@@ -197,7 +197,7 @@ The `scraping/self-healing/` module runs nightly. When a ScrapeGraphAI run fails
 
 1. The error is logged in the `scrape_errors` table along with the first 4,000 chars
    of HTML.
-2. The HTML and a natural-language repair prompt are sent to Gemini 1.5 Flash.
+2. The HTML and a natural-language repair prompt are sent to Gemini 2.5 Flash.
 3. The model returns updated CSS selectors as JSON.
 4. The provider config is updated and the scrape is retried automatically.
 

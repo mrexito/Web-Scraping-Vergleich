@@ -188,7 +188,7 @@ export default function NutzwertanalysePage() {
       <section className="mt-10 flex flex-col items-start gap-2">
         {total === 100 ? (
           <Link
-            href={`/?w=${weights.price},${weights.quality},${weights.location},${weights.flex},${weights.services},${weights.digital}#vergleich`}
+            href={`/?w=${weights.price},${weights.quality},${weights.location},${weights.flex},${weights.services},${weights.digital}&type=${gymType === 'lang' ? 'langgymi' : 'kurzgymi'}#vergleich`}
             className="inline-flex items-center gap-2 rounded-[10px] bg-primary px-5 py-3 text-sm font-medium text-primary-foreground transition-all hover:shadow-[0_0_24px_var(--accent-glow)]"
           >
             {t('cta')}

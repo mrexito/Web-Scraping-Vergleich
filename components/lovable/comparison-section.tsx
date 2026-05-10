@@ -1,17 +1,29 @@
-﻿"use client";
-import {useMemo, useState} from 'react';
+﻿'use client';
+import {useMemo, useState, useTransition} from 'react';
 import {LayoutGrid, List as ListIcon} from 'lucide-react';
+import {useRouter, useSearchParams, usePathname} from 'next/navigation';
 import {useTranslations} from 'next-intl';
 import type {Provider} from '@/lib/mock-providers';
 import {ProviderCard} from './provider-card';
 import {ProviderSheet} from './provider-sheet';
 import {formatCHF} from '@/lib/format';
 import {cn} from '@/lib/utils';
+import type {CourseTypeFilter} from '@/utils/adaptProviders';
 
 type Sort = 'score' | 'price' | 'name';
 
-export function ComparisonSection({providers}: {providers: Provider[]}) {
+interface ComparisonSectionProps {
+  providers: Provider[];
+  courseType: CourseTypeFilter;
+}
+
+export function ComparisonSection({providers, courseType}: ComparisonSectionProps) {
   const t = useTranslations();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [, startTransition] = useTransition();
+
   const [sort, setSort] = useState<Sort>('score');
   const [view, setView] = useState<'grid' | 'list'>('grid');
   const [active, setActive] = useState<Provider | null>(null);
@@ -25,6 +37,25 @@ export function ComparisonSection({providers}: {providers: Provider[]}) {
     });
     return arr;
   }, [providers, sort]);
+
+  const setCourseType = (newType: CourseTypeFilter) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (newType === 'langgymi') {
+      params.delete('type'); // Default: kein URL-Parameter nötig
+    } else {
+      params.set('type', newType);
+    }
+    const queryString = params.toString();
+    startTransition(() => {
+      router.replace(queryString ? `${pathname}?${queryString}` : pathname);
+    });
+  };
+
+  const TYPE_OPTIONS: {value: CourseTypeFilter; labelKey: string}[] = [
+    {value: 'langgymi', labelKey: 'courseType.langgymi'},
+    {value: 'kurzgymi', labelKey: 'courseType.kurzgymi'},
+    {value: 'both', labelKey: 'courseType.both'},
+  ];
 
   return (
     <section id="vergleich" className="mx-auto mt-24 max-w-[1280px] scroll-mt-20 px-6 lg:px-12">
@@ -75,6 +106,37 @@ export function ComparisonSection({providers}: {providers: Provider[]}) {
             </button>
           </div>
         </div>
+      </div>
+
+      {/* Kurstyp-Toggle */}
+      <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+        <span className="text-xs uppercase tracking-wider text-muted-foreground">
+          {t('courseType.label')}
+        </span>
+        <div className="inline-flex rounded-lg border border-border bg-surface p-0.5" role="tablist">
+          {TYPE_OPTIONS.map((opt) => {
+            const isActive = courseType === opt.value;
+            return (
+              <button
+                key={opt.value}
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => setCourseType(opt.value)}
+                className={cn(
+                  'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                  isActive
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {t(opt.labelKey)}
+              </button>
+            );
+          })}
+        </div>
+        <span className="text-xs text-muted-foreground sm:ml-auto">
+          {t('courseType.resultCount', {count: providers.length})}
+        </span>
       </div>
 
       {view === 'grid' ? (
