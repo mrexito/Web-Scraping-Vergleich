@@ -46,7 +46,7 @@
   },
   "compare": {
     "heading": "Providers Compared",
-    "subtitle": "All providers in the Canton of Zurich sorted by your priorities.",
+    "subtitle": "All providers in the Canton of Zurich — sorted by your priorities.",
     "sortBy": "Sort by",
     "sortScore": "Score",
     "sortPrice": "Price",
@@ -103,7 +103,7 @@
   "nwa": {
     "step": "Step 2 of 3",
     "title": "Utility Analysis",
-    "subtitle": "Multi-Criteria Decision Analysis (MCDA): weight the criteria according to your priorities top providers will be calculated based on your weighting.",
+    "subtitle": "Multi-Criteria Decision Analysis (MCDA): weight the criteria according to your priorities — top providers will be calculated based on your weighting.",
     "step1Q": "Which type of grammar school are you looking for?",
     "gymTypeLang": "Long-term grammar school",
     "gymTypeLangSub": "6 years, entry after 6th grade primary",
@@ -133,6 +133,20 @@
       "servicesDesc": "Placement test, essay correction, consultation, learning materials",
       "digital": "Digital learning environment",
       "digitalDesc": "E-learning platform, digital materials, online tools"
+    },
+    "rankingTitle": "Live Ranking",
+    "rankingSub": "Provider ranking including weighted sub-scores. Values update live as you change the weightings.",
+    "rankingProvider": "Provider",
+    "rankingPrice": "Price",
+    "rankingTotal": "Total",
+    "rankingEmpty": "No providers found for the selected course type.",
+    "criteriaShort": {
+      "price": "Price",
+      "quality": "Qual.",
+      "location": "Loc.",
+      "flex": "Flex.",
+      "services": "Serv.",
+      "digital": "Dig."
     }
   },
   "about": {

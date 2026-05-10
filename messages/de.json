@@ -46,7 +46,7 @@
   },
   "compare": {
     "heading": "Anbieter im Vergleich",
-    "subtitle": "Alle Anbieter im Kanton Zürich sortiert nach deinen Prioritäten.",
+    "subtitle": "Alle Anbieter im Kanton Zürich — sortiert nach deinen Prioritäten.",
     "sortBy": "Sortieren",
     "sortScore": "Score",
     "sortPrice": "Preis",
@@ -110,7 +110,7 @@
     "gymTypeKurz": "Kurzzeitgymnasium",
     "gymTypeKurzSub": "4 Jahre, Eintritt nach 2./3. Sek",
     "presetsTitle": "Schnellwahl-Presets",
-    "presetsSub": "Wähle ein Profil als Startpunkt du kannst die Gewichtungen anschliessend anpassen.",
+    "presetsSub": "Wähle ein Profil als Startpunkt — du kannst die Gewichtungen anschliessend anpassen.",
     "presetBalanced": "Ausgewogen",
     "presetPrice": "Preisbewusst",
     "presetQuality": "Qualitätsorientiert",
@@ -133,6 +133,20 @@
       "servicesDesc": "Einstufungstest, Aufsatzkorrektur, Beratung, Lernunterlagen",
       "digital": "Digitale Lernumgebung",
       "digitalDesc": "E-Learning Plattform, digitale Materialien, Online-Tools"
+    },
+    "rankingTitle": "Live-Ranking",
+    "rankingSub": "Anbieter-Ranking inkl. gewichteter Sub-Scores. Die Werte aktualisieren sich live, sobald du die Gewichtungen änderst.",
+    "rankingProvider": "Anbieter",
+    "rankingPrice": "Preis",
+    "rankingTotal": "Total",
+    "rankingEmpty": "Keine Anbieter mit dem gewählten Kurstyp gefunden.",
+    "criteriaShort": {
+      "price": "Preis",
+      "quality": "Qual.",
+      "location": "Std.",
+      "flex": "Flex.",
+      "services": "Serv.",
+      "digital": "Dig."
     }
   },
   "about": {
