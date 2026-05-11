@@ -1,0 +1,130 @@
+﻿'use client';
+import {GraduationCap, Menu} from 'lucide-react';
+import {useEffect, useState} from 'react';
+import {useTranslations} from 'next-intl';
+import {Link, usePathname} from '@/i18n/navigation';
+import {cn} from '@/lib/utils';
+import {ThemeToggle} from '@/components/theme-toggle';
+import {LanguageToggle} from '@/components/language-toggle';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet';
+
+export function Header() {
+  const pathname = usePathname();
+  const t = useTranslations();
+  const [scrolled, setScrolled] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 8);
+    onScroll();
+    window.addEventListener('scroll', onScroll, {passive: true});
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  const navItems = [
+    {href: '/', label: t('nav.comparison')},
+    {href: '/nutzwertanalyse', label: t('nav.nutzwertanalyse')},
+    {href: '/zap-info', label: t('nav.zapInfo')},
+    {href: '/about', label: t('nav.about')},
+    {href: '/contact', label: t('nav.contact')},
+  ] as const;
+
+  return (
+    <header
+      className={cn(
+        'sticky top-0 z-50 w-full transition-all',
+        scrolled
+          ? 'border-b border-border bg-background/80 backdrop-blur-md'
+          : 'border-b border-transparent bg-background'
+      )}
+    >
+      <div className="mx-auto flex h-16 max-w-[1280px] items-center justify-between px-6 lg:px-12">
+        {/* Logo */}
+        <Link href="/" className="flex items-center gap-2.5">
+          <div className="grid h-9 w-9 place-items-center rounded-lg bg-primary text-primary-foreground">
+            <GraduationCap className="h-5 w-5" />
+          </div>
+          <span className="text-sm font-semibold tracking-tight">
+            {t('common.appName')}
+          </span>
+        </Link>
+
+        {/* Desktop Navigation */}
+        <nav className="hidden items-center gap-1 md:flex">
+          {navItems.map((item) => {
+            const isActive = pathname === item.href;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  'relative rounded-md px-3 py-1.5 text-sm transition-colors',
+                  isActive
+                    ? 'text-primary font-medium bg-primary/10'
+                    : 'text-muted-foreground hover:bg-surface hover:text-foreground'
+                )}
+              >
+                {item.label}
+              </Link>
+            );
+          })}
+        </nav>
+
+        {/* Right cluster: Toggles + Mobile Menu */}
+        <div className="flex items-center gap-2">
+          <div className="hidden md:flex md:items-center md:gap-2">
+            <LanguageToggle />
+            <ThemeToggle />
+          </div>
+
+          {/* Mobile Menu Trigger */}
+          <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+            <SheetTrigger asChild>
+              <button
+                aria-label={t('nav.openMenu')}
+                className="grid h-9 w-9 place-items-center rounded-lg border border-border bg-surface text-muted-foreground transition-colors hover:text-foreground md:hidden"
+              >
+                <Menu className="h-4 w-4" />
+              </button>
+            </SheetTrigger>
+            <SheetContent side="right" className="w-[280px] sm:w-[320px]">
+              <SheetHeader>
+                <SheetTitle>{t('nav.navigation')}</SheetTitle>
+              </SheetHeader>
+              <nav className="mt-6 flex flex-col gap-1">
+                {navItems.map((item) => {
+                  const isActive = pathname === item.href;
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={() => setMobileOpen(false)}
+                      className={cn(
+                        'rounded-md px-3 py-2 text-sm transition-colors',
+                        isActive
+                          ? 'bg-primary/10 text-primary font-medium'
+                          : 'text-muted-foreground hover:bg-surface hover:text-foreground'
+                      )}
+                    >
+                      {item.label}
+                    </Link>
+                  );
+                })}
+              </nav>
+              <div className="mt-8 flex items-center justify-between border-t border-border pt-6">
+                <LanguageToggle />
+                <ThemeToggle />
+              </div>
+            </SheetContent>
+          </Sheet>
+        </div>
+      </div>
+    </header>
+  );
+}
