@@ -3,8 +3,11 @@ sGAI_lernForumScraper.py
 =========================
 ScrapeGraphAI-Scraper für Lern-Forum.ch (Provider 2).
 
-Nutzt nativ SmartScraperGraph aus ScrapeGraphAI mit der erweiterten
-graph_config (chunk_size=4000) aus scrape_utils.
+Nutzt nativ SmartScraperGraph aus ScrapeGraphAI mit Provider-spezifischer
+graph_config: Lern-Forum hat eine sehr grosse HTML-Seite, die mit dem
+Standard-model_tokens=32000 das BFH-LLM Context-Limit überschreitet.
+Per-Provider-Override (siehe scrape_utils.get_graph_config) reduziert
+model_tokens auf 4000, damit die ParseNode mehr/kleinere Chunks bildet.
 
 Scrapt drei Seiten:
   1. Hauptseite: Anbieter-Metadaten
@@ -18,7 +21,7 @@ from scrapegraphai.graphs import SmartScraperGraph
 
 from scrape_utils import (
     supabase,
-    graph_config,
+    get_graph_config,
     test_bfh_connection,
     parse_price,
     convert_date as _base_convert_date,
@@ -36,6 +39,9 @@ BASE_URL       = "https://www.lern-forum.ch"
 MAIN_URL       = f"{BASE_URL}/gymivorbereitung-zuerich"
 LANGGYMI_URL   = f"{BASE_URL}/gymivorbereitung-zuerich/langgymnasium"
 KURZGYMI_URL   = f"{BASE_URL}/gymivorbereitung-zuerich/kurzgymnasium"
+
+# Provider-spezifische graph_config (lern-forum.ch braucht kleinere Chunks).
+_GRAPH_CONFIG = get_graph_config(PROVIDER_ID)
 
 
 def convert_date(raw):
@@ -66,8 +72,9 @@ PROMPT_META = (
 # Kein Kurstyp-Filter im Prompt — der Kurstyp wird via URL bestimmt
 # (Single Source of Truth = URL, nicht das LLM-Urteil).
 PROMPT_COURSES = (
-    "Extrahiere ALLE Kurstermine von dieser Seite.\n"
-    "Für jeden Kurs: title, weekday, course_time, location, "
+    "Extrahiere ALLE Kurstermine von dieser Seite. Antworte auf Deutsch.\n"
+    "Für jeden Kurs: title (Deutsch), weekday (deutscher Wochentag: Montag/Dienstag/Mittwoch/"
+    "Donnerstag/Freitag/Samstag/Sonntag), course_time, location, "
     "start_date (TT.MM.JJJJ), end_date, price_chf (Zahl), "
     "availability (ausgebucht/viele), is_online (bool).\n"
     'Antworte NUR mit reinem JSON: {"courses": [...]}'
@@ -77,7 +84,7 @@ PROMPT_COURSES = (
 def scrape_page(url: str, prompt: str) -> dict:
     print(f"\n  Scrapt: {url}")
     try:
-        scraper = SmartScraperGraph(prompt=prompt, source=url, config=graph_config)
+        scraper = SmartScraperGraph(prompt=prompt, source=url, config=_GRAPH_CONFIG)
         result = scraper.run()
     except Exception as e:
         extracted = extract_json_from_string(str(e))
@@ -87,6 +94,19 @@ def scrape_page(url: str, prompt: str) -> dict:
     if isinstance(result, str):
         return extract_json_from_string(result)
     return result if isinstance(result, dict) else {}
+
+
+def _normalize_weekday(raw: str) -> str:
+    """Englische Wochentage → Deutsch."""
+    if not raw:
+        return ""
+    mapping = {
+        "monday": "Montag", "tuesday": "Dienstag", "wednesday": "Mittwoch",
+        "thursday": "Donnerstag", "friday": "Freitag", "saturday": "Samstag",
+        "sunday": "Sonntag",
+    }
+    s = raw.strip()
+    return mapping.get(s.lower(), s)
 
 
 def transform_courses(raw_courses: list, course_type: str) -> list:
@@ -100,7 +120,7 @@ def transform_courses(raw_courses: list, course_type: str) -> list:
 
     for c in raw_courses:
         title       = (c.get("title") or "").strip()
-        weekday     = (c.get("weekday") or "").strip()
+        weekday     = _normalize_weekday((c.get("weekday") or "").strip())
         course_time = (c.get("course_time") or "").strip()
         location    = (c.get("location") or "Zürich").strip()
 
@@ -173,7 +193,7 @@ def save_metadata(metadata: dict) -> None:
 
 
 def main():
-    print(f"Starte {PROVIDER_NAME} Scraper (NATIV ScrapeGraphAI + chunk_size)...")
+    print(f"Starte {PROVIDER_NAME} Scraper (NATIV ScrapeGraphAI + per-provider chunk_size)...")
 
     if not test_bfh_connection():
         print("  Abbruch: BFH LLM nicht erreichbar.")

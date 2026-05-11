@@ -8,33 +8,47 @@ Was hier drin ist:
 ------------------
 1.  ENV-Loader + Supabase-Client (einmalig initialisiert)
 2.  BFH LLM Verbindung testen (test_bfh_connection)
-3.  LLM-Setup (llm_instance, graph_config) — wird von allen Scrapern verwendet.
-    Wichtig: graph_config enthält chunk_size=4000 für ScrapeGraphAIs ParseNode,
-    um Context-Window-Limits des BFH-LLMs zu respektieren (Issues #768, #853
-    im Framework-Repo).
+3.  LLM-Setup:
+      - graph_config (Default für 11 von 12 Anbietern)
+      - get_graph_config(provider_id) — Provider-spezifische Konfiguration
+
+    Wichtig — model_tokens (für ScrapeGraphAI v1.75.1):
+      In smart_scraper_graph.py setzt ScrapeGraphAI intern die ParseNode wie
+      folgt auf (siehe Source):
+
+          parse_node = ParseNode(
+              ...
+              node_config={"llm_model": ..., "chunk_size": self.model_token}
+          )
+
+      Das heisst: model_tokens (im llm-Block der graph_config) wird DIREKT als
+      chunk_size für die ParseNode verwendet — separater Top-Level-Parameter
+      "chunk_size" wird ignoriert.
+
+      Konsequenz: Kleinere model_tokens → mehr Chunks → mehr LLM-Calls,
+      aber weniger Kontext pro Chunk (schlechtere Extraktionsqualität).
+      Grössere model_tokens → wenige Chunks mit viel Kontext, aber Risiko
+      "Context size has been exceeded" beim BFH-LLM.
+
+      Empirische Werte:
+        - 32000 funktioniert für 11/12 Anbieter
+        - lern-forum.ch (sehr grosses HTML) braucht 4000 (sonst Context-Error)
+        - Per-Provider-Override via get_graph_config() löst diesen Trade-off
 4.  Datenextraktion: parse_price, convert_date, extract_json_from_string
 5.  Metadaten-Merging: merge_metadata
-6.  Datenbank-Logging:
-    - start_scrape_run(method, provider_id)
-    - finish_scrape_run(run_id, status, courses_found, error_count)
-    - log_scrape_error(run_id, provider_id, error_type, message, html_snapshot)
-    - record_price_history(provider_id, course_type, price_chf)
-7.  ScrapeRun — Kontext-Manager, der automatisch start/finish macht
+6.  Datenbank-Logging
+7.  ScrapeRun — Kontext-Manager
 
 Benutzung im Scraper:
 ---------------------
-    from scrape_utils import (
-        supabase, graph_config, test_bfh_connection,
-        parse_price, convert_date, merge_metadata, extract_json_from_string,
-        ScrapeRun, log_scrape_error, record_price_history,
-    )
+    # Standard (für 11/12 Anbieter):
+    from scrape_utils import graph_config, ...
+    scraper = SmartScraperGraph(prompt=..., source=..., config=graph_config)
 
-    PROVIDER_ID = 3
-    SCRAPER_METHOD = "scrapegraphai"
-
-    with ScrapeRun(SCRAPER_METHOD, PROVIDER_ID) as run:
-        # scraping-logik
-        run.courses_found += len(courses)
+    # Für lern-forum.ch oder andere grosse Seiten:
+    from scrape_utils import get_graph_config, ...
+    cfg = get_graph_config(PROVIDER_ID)
+    scraper = SmartScraperGraph(prompt=..., source=..., config=cfg)
 """
 
 import os
@@ -52,8 +66,6 @@ from supabase import create_client, Client
 # =====================================================================
 # 1. ENV + SUPABASE-CLIENT
 # =====================================================================
-# scrape_utils.py liegt in scraping/scrapegraphai/. Die .env liegt im
-# Projekt-Root, also 2 Ebenen höher.
 _SCRAPE_UTILS_DIR = os.path.dirname(os.path.abspath(__file__))
 _ENV_PATH = os.path.normpath(
     os.path.join(_SCRAPE_UTILS_DIR, "..", "..", ".env")
@@ -84,27 +96,49 @@ llm_instance = ChatOpenAI(
     base_url=BFH_BASE_URL,
 )
 
-# Konfiguration für ScrapeGraphAIs SmartScraperGraph.
-#
-# Wichtig — chunk_size:
-#   ScrapeGraphAIs ParseNode unterteilt HTML in Chunks von chunk_size Tokens.
-#   Bei zu großen Chunks erreicht das LLM seine Context-Limits (Issues #768,
-#   #853 im Framework-Repo). Wir setzen chunk_size konservativ auf 4000 Tokens,
-#   sodass auch bei großen Seiten jeder Chunk ins Context-Window des
-#   BFH-gehosteten gpt-oss:120b passt.
-#
-# Wichtig — model_tokens:
-#   Setzt das angenommene Context-Window des LLMs. Beeinflusst die interne
-#   Chunk-Dimensionierung von ScrapeGraphAI.
-graph_config = {
-    "llm": {
-        "model_instance": llm_instance,
-        "model_tokens": 32000,
-    },
-    "chunk_size": 4000,
-    "verbose": True,
-    "headless": True,
+# Default model_tokens. Funktioniert für 11/12 Anbieter.
+_DEFAULT_MODEL_TOKENS = 32000
+
+# Per-Provider Overrides für Anbieter mit ungewöhnlich grossen HTML-Seiten,
+# bei denen der Default-Wert das BFH-LLM-Context überschreitet.
+_PROVIDER_MODEL_TOKENS_OVERRIDE = {
+    2: 4000,   # lern-forum.ch — sehr grosse HTML-Seite, sonst Context-Error
 }
+
+
+def _build_graph_config(model_tokens: int) -> dict:
+    """Erstellt eine graph_config mit dem gewünschten model_tokens-Wert."""
+    return {
+        "llm": {
+            "model_instance": llm_instance,
+            "model_tokens": model_tokens,
+        },
+        "verbose": True,
+        "headless": True,
+    }
+
+
+# Default-Config für die meisten Anbieter (Backwards-Compatibility).
+graph_config = _build_graph_config(_DEFAULT_MODEL_TOKENS)
+
+
+def get_graph_config(provider_id: int) -> dict:
+    """
+    Liefert die ScrapeGraphAI-Konfiguration für einen konkreten Anbieter.
+
+    Für Provider mit ungewöhnlich grossen HTML-Seiten (z.B. lern-forum.ch)
+    wird ein niedrigerer model_tokens-Wert verwendet, damit das BFH-LLM-
+    Context-Limit nicht überschritten wird.
+
+    Beispiel:
+        from scrape_utils import get_graph_config
+        cfg = get_graph_config(PROVIDER_ID)
+        scraper = SmartScraperGraph(prompt=..., source=..., config=cfg)
+    """
+    tokens = _PROVIDER_MODEL_TOKENS_OVERRIDE.get(provider_id, _DEFAULT_MODEL_TOKENS)
+    if tokens != _DEFAULT_MODEL_TOKENS:
+        print(f"  ℹ Provider {provider_id}: model_tokens={tokens} (Override)")
+    return _build_graph_config(tokens)
 
 
 def test_bfh_connection() -> bool:

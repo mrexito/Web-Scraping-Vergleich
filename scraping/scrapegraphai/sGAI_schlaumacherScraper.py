@@ -60,7 +60,6 @@ Antworte NUR mit reinem JSON: {"courses": [...], "metadata": {...}}
 def scrape_page(url: str, prompt: str) -> dict:
     """Native ScrapeGraphAI mit graph_config (inkl. chunk_size)."""
     print(f"\n  Scrapt: {url}")
-    print(f"  graph_config chunk_size: {graph_config.get('chunk_size', 'NICHT GESETZT')}")
     try:
         scraper = SmartScraperGraph(prompt=prompt, source=url, config=graph_config)
         result = scraper.run()
