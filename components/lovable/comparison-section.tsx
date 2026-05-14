@@ -54,7 +54,6 @@ export function ComparisonSection({providers, courseType}: ComparisonSectionProp
   const TYPE_OPTIONS: {value: CourseTypeFilter; labelKey: string}[] = [
     {value: 'langgymi', labelKey: 'courseType.langgymi'},
     {value: 'kurzgymi', labelKey: 'courseType.kurzgymi'},
-    {value: 'both', labelKey: 'courseType.both'},
   ];
 
   return (

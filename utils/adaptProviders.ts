@@ -7,7 +7,7 @@ import type { Provider, Course as ProviderCourse, Availability } from '@/lib/moc
 // TYPES
 // =====================================================================
 
-export type CourseTypeFilter = 'langgymi' | 'kurzgymi' | 'both';
+export type CourseTypeFilter = 'langgymi' | 'kurzgymi';
 
 export interface CriteriaWeights {
   price: number;
@@ -61,7 +61,7 @@ export function serializeWeights(w: CriteriaWeights): string {
 }
 
 export function parseCourseTypeFromString(raw: string | undefined): CourseTypeFilter {
-  if (raw === 'kurzgymi' || raw === 'langgymi' || raw === 'both') return raw;
+  if (raw === 'kurzgymi' || raw === 'langgymi') return raw;
   return DEFAULT_COURSE_TYPE;
 }
 
@@ -115,12 +115,10 @@ function uniqueTeachingDays(courses: DbCourse[]): string[] {
  */
 function getProviderPrice(provider: GymiProvider, courseType: CourseTypeFilter): number | null {
   if (courseType === 'langgymi') return provider['Preis Langzeit Kurs'] ?? null;
-  if (courseType === 'kurzgymi') return provider['Preis Intensiver Kurs'] ?? null;
-  return provider['Preis Langzeit Kurs'] ?? provider['Preis Intensiver Kurs'] ?? null;
+  return provider['Preis Intensiver Kurs'] ?? null;
 }
 
 function filterCoursesByType(courses: DbCourse[], courseType: CourseTypeFilter): DbCourse[] {
-  if (courseType === 'both') return courses;
   return courses.filter((c) => c.course_type === courseType);
 }
 
@@ -136,13 +134,11 @@ export function offersCourseType(
   detail: CourseDetail | undefined,
   courseType: CourseTypeFilter,
 ): boolean {
-  if (courseType === 'both') return true;
   const kursart = detail?.['Kursart (Intensiv- oder Langzeitkurs)'];
   if (!kursart) return true;
   if (kursart === 'Beides') return true;
   if (courseType === 'langgymi') return kursart === 'Lang';
-  if (courseType === 'kurzgymi') return kursart === 'Intensiv';
-  return true;
+  return kursart === 'Intensiv';
 }
 
 // =====================================================================
@@ -274,7 +270,6 @@ export interface ProviderWithBreakdown extends Provider {
  * Wandelt rohe Supabase-Daten in UI-Provider um (kurstyp-gefiltert).
  *
  * Anbieter, die den gewählten Typ nicht anbieten, werden ausgeblendet.
- * Bei courseType='both' werden alle Anbieter angezeigt.
  */
 export function adaptProviders(
   providers: GymiProvider[],

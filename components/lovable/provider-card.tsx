@@ -1,9 +1,11 @@
 ﻿'use client';
-import {ArrowRight, Calendar, MapPin, Wallet, Users} from 'lucide-react';
+import {ArrowRight, Calendar, MapPin, Wallet, Users, GitCompare, Check} from 'lucide-react';
+import {useEffect, useState} from 'react';
 import {useTranslations} from 'next-intl';
 import type {Provider} from '@/lib/mock-providers';
 import {formatCHF} from '@/lib/format';
 import {cn} from '@/lib/utils';
+import {useCompareStore} from '@/stores/compareStore';
 
 function ScoreDots({score}: {score: number}) {
   const filled = Math.round((score / 100) * 5);
@@ -45,6 +47,21 @@ export function ProviderCard({
 }) {
   const t = useTranslations();
 
+  // Hydration-Fix: Zustand-State erst nach Mount lesen (sonst Server/Client-Mismatch)
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Zustand-Store für Vergleichsfunktion
+  const toggleProvider = useCompareStore((s) => s.toggleProvider);
+  const isSelectedRaw = useCompareStore((s) => s.isSelected(provider.id));
+  const isFullRaw = useCompareStore((s) => s.isFull());
+
+  // Vor Mount: immer false, damit Server und Client identisch rendern
+  const isSelected = mounted ? isSelectedRaw : false;
+  const isFull = mounted ? isFullRaw : false;
+
   const locs = provider.locations.slice(0, 2).join(', ');
   const more = provider.locations.length > 2 ? ` +${provider.locations.length - 2}` : '';
 
@@ -55,12 +72,22 @@ export function ProviderCard({
     .map((d) => (VALID_DAYS.includes(d as typeof VALID_DAYS[number]) ? t(`days.${d}`) : d))
     .join(', ');
 
+  const compareDisabled = isFull && !isSelected;
+
+  const handleCompareClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!compareDisabled) {
+      toggleProvider(provider.id);
+    }
+  };
+
   return (
     <article
       className={cn(
         'group relative flex flex-col rounded-2xl border border-border bg-card p-6',
         'shadow-[var(--shadow-card)] transition-all duration-200',
         'hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-[var(--shadow-card-hover)]',
+        isSelected && 'border-primary/60 ring-1 ring-primary/20',
       )}
     >
       <div className="flex items-start justify-between gap-4">
@@ -115,13 +142,42 @@ export function ProviderCard({
 
       <div className="mt-6 h-px bg-border" />
 
-      <button
-        onClick={onOpen}
-        className="mt-5 inline-flex items-center justify-between rounded-[10px] bg-foreground px-4 py-2.5 text-sm font-medium text-background transition-all hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-      >
-        {t('card.more')}
-        <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-      </button>
+      <div className="mt-5 flex gap-2">
+        <button
+          onClick={onOpen}
+          className="inline-flex flex-1 items-center justify-between rounded-[10px] bg-foreground px-4 py-2.5 text-sm font-medium text-background transition-all hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        >
+          {t('card.more')}
+          <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+        </button>
+
+        <button
+          onClick={handleCompareClick}
+          disabled={compareDisabled}
+          aria-label={isSelected ? t('compareSelect.remove') : t('compareSelect.add')}
+          title={
+            compareDisabled
+              ? t('compareSelect.maxReached')
+              : isSelected
+                ? t('compareSelect.remove')
+                : t('compareSelect.add')
+          }
+          className={cn(
+            'inline-flex items-center justify-center rounded-[10px] border px-3 py-2.5 text-sm font-medium transition-all',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+            isSelected
+              ? 'border-primary bg-primary/10 text-primary hover:bg-primary/20'
+              : 'border-border bg-card text-foreground hover:border-primary/40 hover:bg-muted',
+            compareDisabled && 'cursor-not-allowed opacity-40 hover:border-border hover:bg-card',
+          )}
+        >
+          {isSelected ? (
+            <Check className="h-4 w-4" />
+          ) : (
+            <GitCompare className="h-4 w-4" />
+          )}
+        </button>
+      </div>
     </article>
   );
 }
