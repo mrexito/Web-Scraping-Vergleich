@@ -1,5 +1,5 @@
 ﻿'use client';
-import {useMemo, useState, useTransition} from 'react';
+import {useEffect, useMemo, useState, useTransition} from 'react';
 import {LayoutGrid, List as ListIcon} from 'lucide-react';
 import {useRouter, useSearchParams, usePathname} from 'next/navigation';
 import {useTranslations} from 'next-intl';
@@ -9,8 +9,7 @@ import {ProviderSheet} from './provider-sheet';
 import {formatCHF} from '@/lib/format';
 import {cn} from '@/lib/utils';
 import type {CourseTypeFilter} from '@/utils/adaptProviders';
-
-type Sort = 'score' | 'price' | 'name';
+import {useUiPreferencesStore} from '@/stores/uiPreferencesStore';
 
 interface ComparisonSectionProps {
   providers: Provider[];
@@ -24,8 +23,23 @@ export function ComparisonSection({providers, courseType}: ComparisonSectionProp
   const searchParams = useSearchParams();
   const [, startTransition] = useTransition();
 
-  const [sort, setSort] = useState<Sort>('score');
-  const [view, setView] = useState<'grid' | 'list'>('grid');
+  // Hydration-Fix für Zustand mit localStorage
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Zustand-Store für persistente UI-Präferenzen (Sort + View)
+  const sortRaw = useUiPreferencesStore((s) => s.sort);
+  const viewRaw = useUiPreferencesStore((s) => s.view);
+  const setSort = useUiPreferencesStore((s) => s.setSort);
+  const setView = useUiPreferencesStore((s) => s.setView);
+
+  // Vor Mount: Defaults verwenden (gleicher Wert wie Server-Render)
+  const sort = mounted ? sortRaw : 'score';
+  const view = mounted ? viewRaw : 'grid';
+
+  // Lokaler State (Sheet-Auswahl ist kurzlebig, kein globaler Store nötig)
   const [active, setActive] = useState<Provider | null>(null);
 
   const sorted = useMemo(() => {
@@ -73,7 +87,7 @@ export function ComparisonSection({providers, courseType}: ComparisonSectionProp
             <span className="text-xs text-muted-foreground">{t('compare.sortBy')}</span>
             <select
               value={sort}
-              onChange={(e) => setSort(e.target.value as Sort)}
+              onChange={(e) => setSort(e.target.value as 'score' | 'price' | 'name')}
               className="bg-transparent text-sm font-medium text-foreground outline-none"
             >
               <option value="score">{t('compare.sortScore')}</option>
