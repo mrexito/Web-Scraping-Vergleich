@@ -57,6 +57,19 @@
     "tableName": "Name",
     "tableLocations": "Locations"
   },
+  "compareSelect": {
+    "add": "Add to comparison",
+    "remove": "Remove from comparison",
+    "maxReached": "Maximum of 3 providers reached",
+    "title": "Compare Providers",
+    "subtitle": "Direct comparison of the selected providers",
+    "count": "{count} of 3 selected",
+    "clearAll": "Clear all",
+    "viewComparison": "View comparison",
+    "emptyState": "No providers selected for comparison yet",
+    "selectMin": "Select at least 2 providers for comparison",
+    "headerLabel": "Compare"
+  },
   "card": {
     "score": "Score",
     "more": "More information"
@@ -243,7 +256,6 @@
     "label": "Course type",
     "langgymi": "Long-term Gymi",
     "kurzgymi": "Short-term Gymi",
-    "both": "Both",
     "resultCount": "{count} providers"
   }
 }

@@ -57,6 +57,19 @@
     "tableName": "Name",
     "tableLocations": "Standorte"
   },
+  "compareSelect": {
+    "add": "Zum Vergleich hinzufügen",
+    "remove": "Aus Vergleich entfernen",
+    "maxReached": "Maximum von 3 Anbietern erreicht",
+    "title": "Anbieter vergleichen",
+    "subtitle": "Direkter Vergleich der ausgewählten Anbieter",
+    "count": "{count} von 3 ausgewählt",
+    "clearAll": "Alle entfernen",
+    "viewComparison": "Vergleich anzeigen",
+    "emptyState": "Noch keine Anbieter zum Vergleich ausgewählt",
+    "selectMin": "Wähle mindestens 2 Anbieter für den Vergleich aus",
+    "headerLabel": "Vergleichen"
+  },
   "card": {
     "score": "Score",
     "more": "Mehr Informationen"
@@ -243,7 +256,6 @@
     "label": "Kurstyp",
     "langgymi": "Langzeitgymi",
     "kurzgymi": "Kurzzeitgymi",
-    "both": "Beide",
     "resultCount": "{count} Anbieter"
   }
 }
