@@ -1,7 +1,7 @@
 'use client';
 import {useEffect, useState} from 'react';
 import {useTranslations} from 'next-intl';
-import {ArrowRight, Calendar, MapPin, Wallet, Users, GitCompare, X, ArrowLeft, CheckCircle2, Circle, Clock, BookOpen, Star, ExternalLink} from 'lucide-react';
+import {ArrowRight, Calendar, MapPin, Wallet, Users, GitCompare, X, ArrowLeft, CheckCircle2, Circle, Clock, BookOpen, Star, ExternalLink, ChevronDown} from 'lucide-react';
 import {Link} from '@/i18n/navigation';
 import type {Provider} from '@/lib/mock-providers';
 import {formatCHF} from '@/lib/format';
@@ -97,7 +97,7 @@ export function CompareView({allProviders}: {allProviders: Provider[]}) {
 }
 
 // =====================================================================
-// COMPARE-CARD — ALLE Infos auf einen Blick
+// COMPARE-CARD — ALLE Infos auf einen Blick mit Akkordeon-Kurse
 // =====================================================================
 
 function CompareCard({
@@ -137,7 +137,7 @@ function CompareCard({
         'hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-[var(--shadow-card-hover)]',
       )}
     >
-      {/* Remove-Button — schwebt auf der Karten-Ecke */}
+      {/* Remove-Button */}
       <button
         onClick={onRemove}
         aria-label={t('compareSelect.remove')}
@@ -153,7 +153,6 @@ function CompareCard({
           <h3 className="text-lg font-semibold tracking-tight">
             {provider.name}
           </h3>
-          {/* Quality-Stars */}
           <div className="mt-1 flex items-center gap-0.5">
             {Array.from({length: 3}).map((_, i) => (
               <Star
@@ -193,19 +192,7 @@ function CompareCard({
           <dd className="font-medium" style={{fontVariantNumeric: 'tabular-nums'}}>
             {formatCHF(provider.price)}
           </dd>
-          {provider.originalPrice && (
-            <span className="text-xs text-muted-foreground line-through" style={{fontVariantNumeric: 'tabular-nums'}}>
-              {formatCHF(provider.originalPrice)}
-            </span>
-          )}
         </div>
-
-        {provider.discountUntil && (
-          <div className="flex items-center gap-2.5 text-xs text-warning">
-            <Clock className="h-3.5 w-3.5" />
-            <dd>Rabatt bis {provider.discountUntil}</dd>
-          </div>
-        )}
 
         <div className="flex items-center gap-2.5">
           <Users className="h-4 w-4 text-primary" />
@@ -225,7 +212,7 @@ function CompareCard({
 
       <div className="my-5 h-px bg-border" />
 
-      {/* SEKTION 2: Standorte (komplett, nicht nur 2) */}
+      {/* SEKTION 2: Standorte und Unterrichtstage */}
       <div className="space-y-2 text-sm">
         <div className="flex items-start gap-2.5">
           <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
@@ -246,7 +233,6 @@ function CompareCard({
           </div>
         </div>
 
-        {/* Unterrichtstage */}
         <div className="flex items-start gap-2.5">
           <Calendar className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
           <div className="flex-1">
@@ -260,7 +246,7 @@ function CompareCard({
 
       <div className="my-5 h-px bg-border" />
 
-      {/* SEKTION 3: Beispiel-Kurse (falls vorhanden) */}
+      {/* SEKTION 3: Kurse gruppiert nach Standort (Hybrid-Akkordeon) */}
       {provider.courses && provider.courses.length > 0 && (
         <>
           <div className="mb-5">
@@ -268,30 +254,7 @@ function CompareCard({
               <BookOpen className="h-3 w-3" />
               {t('sheet.coursesTitle')}
             </h4>
-            <ul className="space-y-2 text-sm">
-              {provider.courses.slice(0, 3).map((course) => (
-                <li
-                  key={course.id}
-                  className="rounded-lg border border-border bg-muted/30 p-2.5 text-xs"
-                >
-                  <div className="font-medium">{course.label}</div>
-                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-muted-foreground">
-                    <span className="inline-flex items-center gap-1">
-                      <Calendar className="h-3 w-3" /> {course.day}
-                    </span>
-                    <span className="inline-flex items-center gap-1">
-                      <Clock className="h-3 w-3" /> {course.time}
-                    </span>
-                  </div>
-                  <div className="mt-1 flex items-center justify-between">
-                    <span className="text-muted-foreground">{course.location}</span>
-                    <span className="font-medium" style={{fontVariantNumeric: 'tabular-nums'}}>
-                      {formatCHF(course.price)}
-                    </span>
-                  </div>
-                </li>
-              ))}
-            </ul>
+            <CompareCoursesByLocation courses={provider.courses} t={t} />
           </div>
 
           <div className="my-5 h-px bg-border" />
@@ -323,7 +286,7 @@ function CompareCard({
         </ul>
       </div>
 
-      {/* CTA — externer Link zum Anbieter */}
+      {/* CTA */}
       <a
         href={provider.websiteUrl}
         target="_blank"
@@ -337,5 +300,85 @@ function CompareCard({
         <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
       </a>
     </article>
+  );
+}
+
+// =====================================================================
+// COMPARE-COURSES-BY-LOCATION — Akkordeon-Gruppen nach Standort
+// =====================================================================
+
+function CompareCoursesByLocation({
+  courses,
+  t,
+}: {
+  courses: Provider['courses'];
+  t: (key: string, values?: Record<string, string | number>) => string;
+}) {
+  // Gruppiere Kurse nach Standort
+  const grouped = courses.reduce((acc, course) => {
+    const loc = course.location || '—';
+    if (!acc[loc]) acc[loc] = [];
+    acc[loc].push(course);
+    return acc;
+  }, {} as Record<string, Provider['courses']>);
+
+  // Sortierung: Standorte mit den meisten Kursen zuerst, dann alphabetisch
+  const sortedLocations = Object.keys(grouped).sort((a, b) => {
+    const diff = grouped[b].length - grouped[a].length;
+    return diff !== 0 ? diff : a.localeCompare(b);
+  });
+
+  return (
+    <div className="space-y-2">
+      {sortedLocations.map((location, index) => (
+        <details
+          key={location}
+          open={index === 0}
+          className="group overflow-hidden rounded-lg border border-border bg-muted/20"
+        >
+          <summary className="flex cursor-pointer items-center justify-between gap-2 px-3 py-2 transition-colors hover:bg-muted/40 list-none [&::-webkit-details-marker]:hidden">
+            <div className="flex items-center gap-1.5">
+              <MapPin className="h-3 w-3 text-primary" />
+              <span className="text-xs font-medium">{location}</span>
+              <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                {grouped[location].length}
+              </span>
+            </div>
+            <ChevronDown className="h-3 w-3 text-muted-foreground transition-transform group-open:rotate-180" />
+          </summary>
+
+          <ul className="space-y-1.5 border-t border-border px-3 py-2 text-xs">
+            {grouped[location].map((course) => (
+              <li
+                key={course.id}
+                className="rounded-md bg-card p-2"
+              >
+                <div className="font-medium text-foreground">{course.label}</div>
+                <div className="mt-1 flex flex-wrap items-center justify-between gap-2 text-muted-foreground">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <span className="inline-flex items-center gap-0.5">
+                      <Calendar className="h-3 w-3" /> {course.day}
+                    </span>
+                    <span className="inline-flex items-center gap-0.5">
+                      <Clock className="h-3 w-3" /> {course.time}
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    {course.originalPrice && (
+                      <div className="text-[10px] line-through" style={{fontVariantNumeric: 'tabular-nums'}}>
+                        {formatCHF(course.originalPrice)}
+                      </div>
+                    )}
+                    <div className="font-medium text-foreground" style={{fontVariantNumeric: 'tabular-nums'}}>
+                      {formatCHF(course.price)}
+                    </div>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </details>
+      ))}
+    </div>
   );
 }

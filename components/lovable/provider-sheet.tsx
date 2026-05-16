@@ -1,5 +1,5 @@
 ﻿"use client";
-import {Check, ExternalLink, Star, X} from 'lucide-react';
+import {Check, ExternalLink, Star, X, MapPin, ChevronDown} from 'lucide-react';
 import {useEffect} from 'react';
 import {useTranslations} from 'next-intl';
 import type {Provider} from '@/lib/mock-providers';
@@ -51,6 +51,92 @@ function ServiceRow({
           {newLabel}
         </span>
       )}
+    </div>
+  );
+}
+
+// =====================================================================
+// COURSES-BY-LOCATION — Akkordeon-Gruppen nach Standort
+// =====================================================================
+function CoursesByLocation({
+  courses,
+  t,
+}: {
+  courses: Provider['courses'];
+  t: (key: string, values?: Record<string, string | number>) => string;
+}) {
+  // Gruppiere Kurse nach Standort
+  const grouped = courses.reduce((acc, course) => {
+    const loc = course.location || '—';
+    if (!acc[loc]) acc[loc] = [];
+    acc[loc].push(course);
+    return acc;
+  }, {} as Record<string, Provider['courses']>);
+
+  // Sortierung: Standorte mit den meisten Kursen zuerst, dann alphabetisch
+  const sortedLocations = Object.keys(grouped).sort((a, b) => {
+    const diff = grouped[b].length - grouped[a].length;
+    return diff !== 0 ? diff : a.localeCompare(b);
+  });
+
+  if (sortedLocations.length === 0) {
+    return (
+      <div className="rounded-xl border border-border bg-surface/20 px-4 py-6 text-center text-sm text-muted-foreground">
+        Keine Kurse verfügbar
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {sortedLocations.map((location, index) => (
+        <details
+          key={location}
+          open={index === 0}
+          className="group overflow-hidden rounded-xl border border-border bg-surface/20"
+        >
+          <summary className="flex cursor-pointer items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-surface/40 list-none [&::-webkit-details-marker]:hidden">
+            <div className="flex items-center gap-2">
+              <MapPin className="h-4 w-4 text-primary" />
+              <span className="font-medium text-sm">{location}</span>
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+                {grouped[location].length} {grouped[location].length === 1 ? 'Kurs' : 'Kurse'}
+              </span>
+            </div>
+            <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" />
+          </summary>
+
+          <div className="border-t border-border">
+            <table className="w-full text-sm">
+              <thead className="bg-surface/60 text-[11px] uppercase tracking-wider text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2 text-left font-medium">{t('sheet.courseLabel')}</th>
+                  <th className="px-3 py-2 text-left font-medium">{t('sheet.day')}</th>
+                  <th className="px-3 py-2 text-left font-medium">{t('sheet.time')}</th>
+                  <th className="px-3 py-2 text-right font-medium">{t('sheet.price')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {grouped[location].map((c) => (
+                  <tr key={c.id} className="border-t border-border">
+                    <td className="px-3 py-2 font-medium">{c.label}</td>
+                    <td className="px-3 py-2 text-muted-foreground">{c.day}</td>
+                    <td className="px-3 py-2 text-muted-foreground" style={{fontVariantNumeric: 'tabular-nums'}}>{c.time}</td>
+                    <td className="px-3 py-2 text-right">
+                      {c.originalPrice && (
+                        <div className="text-[11px] text-muted-foreground line-through" style={{fontVariantNumeric: 'tabular-nums'}}>
+                          {formatCHF(c.originalPrice)}
+                        </div>
+                      )}
+                      <div className="font-medium" style={{fontVariantNumeric: 'tabular-nums'}}>{formatCHF(c.price)}</div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      ))}
     </div>
   );
 }
@@ -130,36 +216,8 @@ export function ProviderSheet({
 
               <section className="mt-8">
                 <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">{t('sheet.coursesTitle')}</h3>
-                <div className="mt-4 overflow-hidden rounded-xl border border-border">
-                  <table className="w-full text-sm">
-                    <thead className="bg-surface/60 text-[11px] uppercase tracking-wider text-muted-foreground">
-                      <tr>
-                        <th className="px-3 py-2.5 text-left font-medium">{t('sheet.courseLabel')}</th>
-                        <th className="px-3 py-2.5 text-left font-medium">{t('sheet.location')}</th>
-                        <th className="px-3 py-2.5 text-left font-medium">{t('sheet.day')}</th>
-                        <th className="px-3 py-2.5 text-left font-medium">{t('sheet.time')}</th>
-                        <th className="px-3 py-2.5 text-right font-medium">{t('sheet.price')}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {provider.courses.map((c) => (
-                        <tr key={c.id} className="border-t border-border">
-                          <td className="px-3 py-2.5 font-medium">{c.label}</td>
-                          <td className="px-3 py-2.5 text-muted-foreground">{c.location}</td>
-                          <td className="px-3 py-2.5 text-muted-foreground">{c.day}</td>
-                          <td className="px-3 py-2.5 text-muted-foreground" style={{fontVariantNumeric: 'tabular-nums'}}>{c.time}</td>
-                          <td className="px-3 py-2.5 text-right">
-                            {c.originalPrice && (
-                              <div className="text-[11px] text-muted-foreground line-through" style={{fontVariantNumeric: 'tabular-nums'}}>
-                                {formatCHF(c.originalPrice)}
-                              </div>
-                            )}
-                            <div className="font-medium" style={{fontVariantNumeric: 'tabular-nums'}}>{formatCHF(c.price)}</div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="mt-4">
+                  <CoursesByLocation courses={provider.courses} t={t} />
                 </div>
               </section>
 
