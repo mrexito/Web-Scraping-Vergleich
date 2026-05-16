@@ -5,6 +5,7 @@ import {GeistSans} from 'geist/font/sans';
 import {ThemeProvider} from '@/components/theme-provider';
 import {Header} from '@/components/lovable/header';
 import {Footer} from '@/components/lovable/footer';
+import {RealtimeIndicator} from '@/components/lovable/realtime-indicator';
 import {routing} from '@/i18n/routing';
 import '../globals.css';
 
@@ -48,6 +49,7 @@ export default async function LocaleLayout({
             <Header />
             <main className="flex-1">{children}</main>
             <Footer />
+            <RealtimeIndicator />
           </ThemeProvider>
         </NextIntlClientProvider>
       </body>

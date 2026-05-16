@@ -257,5 +257,10 @@
     "langgymi": "Langzeitgymi",
     "kurzgymi": "Kurzzeitgymi",
     "resultCount": "{count} Anbieter"
+  },
+  "realtime": {
+    "live": "Live",
+    "updated": "Aktualisiert",
+    "disconnected": "Offline"
   }
 }

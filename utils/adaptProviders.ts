@@ -307,7 +307,7 @@ export function adaptProviders(
     const locations = uniqueLocations(filteredCourses);
     const teachingDays = uniqueTeachingDays(filteredCourses);
 
-    const sampleCourses: ProviderCourse[] = filteredCourses.slice(0, 3).map((c, i) => ({
+    const sampleCourses: ProviderCourse[] = filteredCourses.map((c, i) => ({
       id: `${provider.ID}-${i}`,
       label: c.title ?? `Kurs ${String.fromCharCode(65 + i)}`,
       type: c.course_type === 'kurzgymi' ? 'kurzgymi' : 'langgymi',
