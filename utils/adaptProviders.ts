@@ -157,11 +157,66 @@ export function offersCourseType(
 //     Mehr als zwei Unterrichtstage pro Woche signalisieren echte
 //     Termin-Flexibilität (klassische Anbieter sind auf Mi/Sa beschränkt).
 //
+//   • MAX_PARTICIPANTS_FOR_SMALL_CLASS = 8
+//     Schwelle für die Quality-Berechnung (siehe computeQualityRating).
+//     Eine Gruppengrösse bis 8 wird als individuelle Betreuung gewertet.
+//
 // Die Werte sind bewusst im Modul lokalisiert, damit der MCDA-Bereich
 // nachvollziehbar in der Thesis-Sektion zur Score-Berechnung dokumentiert
 // werden kann.
 const MAX_LOCATIONS_FOR_FULL_SCORE = 5;
 const MIN_DAYS_FOR_FLEXIBILITY = 3;
+const MAX_PARTICIPANTS_FOR_SMALL_CLASS = 8;
+
+// =====================================================================
+// QUALITY-RATING — datengetriebene Berechnung
+// =====================================================================
+/**
+ * Berechnet die Quality-Bewertung (1=beste, 3=schlechteste) aus
+ * objektiven Datenpunkten.
+ *
+ * Hintergrund: Im EPRP-Vorgängerprojekt war Quality eine manuell
+ * gepflegte Spalte (1–3 nach Schulnoten-Logik). In der aktuellen
+ * Datenbasis ist diese Spalte jedoch nur für 2 von 12 Providern
+ * befüllt — was eine MCDA-Verzerrung zur Folge hätte. Wir berechnen
+ * Quality daher einheitlich für alle Provider aus folgenden Signalen:
+ *
+ *   1. Kleine Klassen (max. ≤ 8 Teilnehmer)  → individuelle Betreuung
+ *   2. Eigene Lernunterlagen vorhanden       → pädagogisches Investment
+ *   3. Beratungsgespräch verfügbar           → persönliche Betreuung
+ *
+ * Mapping (DB-Logik: 1 = beste):
+ *   ≥ 3 Signale → q=1 (beste; im UI 3 Sterne)
+ *   = 2 Signale → q=2 (mittel; im UI 2 Sterne)
+ *   ≤ 1 Signal  → q=3 (schlechteste; im UI 1 Stern)
+ *
+ * Konsistenz UI ↔ Score:
+ *   Sowohl der MCDA-Sub-Score (qualityScore in calculateSubScores)
+ *   als auch der quality-Output für die Stars-Anzeige stammen aus
+ *   dieser Funktion — damit kann es keine Divergenz mehr geben.
+ */
+function computeQualityRating(
+  provider: GymiProvider,
+  detail: CourseDetail | undefined,
+): 1 | 2 | 3 {
+  const maxRaw = provider['Maximale Anzahl der Teilnehmer'];
+  // Erste Zahl aus dem Range-String extrahieren (z.B. "4-8" → 4, "1:1" → 1)
+  const maxMatch = maxRaw ? String(maxRaw).match(/\d+/) : null;
+  const smallClasses = maxMatch
+    ? parseInt(maxMatch[0], 10) <= MAX_PARTICIPANTS_FOR_SMALL_CLASS
+    : false;
+
+  const signals = [
+    smallClasses,
+    detail?.['Eigene Lernunterlagen'] ?? false,
+    detail?.Beratungsgespraech ?? false,
+  ];
+  const count = signals.filter(Boolean).length;
+
+  if (count >= 3) return 1;
+  if (count === 2) return 2;
+  return 3;
+}
 
 // =====================================================================
 // SUB-SCORE-BERECHNUNG (zentrale MCDA-Logik, kurstyp-aware)
@@ -182,8 +237,10 @@ function calculateSubScores(
       1 - (price - priceRangeContext.minPrice) / (priceRangeContext.maxPrice - priceRangeContext.minPrice);
   }
 
-  // 2. QUALITÄT — Q=1 (beste) → 1.0, Q=2 → 0.66, Q=3 → 0.33
-  const q = detail?.Qualitaetsbewertung ?? 2;
+  // 2. QUALITÄT — Composite-Score aus 3 datenbasierten Signalen.
+  // Q=1 (beste) → 1.0, Q=2 → 0.66, Q=3 → 0.33.
+  // Methodische Begründung: siehe computeQualityRating() oben.
+  const q = computeQualityRating(provider, detail);
   const qualityScore = q === 1 ? 1 : q === 2 ? 2 / 3 : 1 / 3;
 
   // 3. STANDORT — Anzahl unique Locations, normalisiert auf [0,1]
@@ -359,7 +416,7 @@ export function adaptProviders(
       locations: locations.length > 0 ? locations : ['Zürich'],
       teachingDays: teachingDays.length > 0 ? teachingDays : ['—'],
       availability: mapAvailability(filteredCourses),
-      quality: (detail?.Qualitaetsbewertung ?? 2) as 1 | 2 | 3,
+      quality: computeQualityRating(provider, detail),
       maxParticipants: provider['Maximale Anzahl der Teilnehmer'] ?? '—',
       websiteUrl: (provider.URL && provider.URL[0]) || '#',
       hasELearning: provider['E-Learning'],

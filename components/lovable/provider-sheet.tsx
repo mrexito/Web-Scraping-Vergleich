@@ -7,6 +7,10 @@ import {formatCHF} from '@/lib/format';
 import {cn} from '@/lib/utils';
 
 function Stars({n}: {n: number}) {
+  // Quality-Mapping: DB n=1 (beste) → 3 Sterne, n=3 (schlechteste) → 1 Stern.
+  // Im UI ist "mehr Sterne = besser" intuitiv, in der DB folgen wir der
+  // Schulnoten-Logik (1=beste). Daher Inversion: filled = 4 - n.
+  const filled = 4 - n;
   return (
     <span className="inline-flex items-center gap-0.5">
       {Array.from({length: 3}).map((_, i) => (
@@ -14,7 +18,7 @@ function Stars({n}: {n: number}) {
           key={i}
           className={cn(
             'h-3.5 w-3.5',
-            i < n ? 'fill-warning text-warning' : 'text-border',
+            i < filled ? 'fill-warning text-warning' : 'text-border',
           )}
         />
       ))}

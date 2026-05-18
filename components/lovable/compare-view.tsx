@@ -159,7 +159,8 @@ function CompareCard({
                 key={i}
                 className={cn(
                   'h-3 w-3',
-                  i < provider.quality
+                  // Quality: DB 1=beste → 3 Sterne, DB 3=schlechteste → 1 Stern
+                  i < (4 - provider.quality)
                     ? 'fill-primary text-primary'
                     : 'fill-none text-border',
                 )}
