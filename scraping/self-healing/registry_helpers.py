@@ -17,7 +17,7 @@ from typing import Optional
 
 # Wir nutzen den supabase-Client aus scrape_utils.py (selbe wie SGI)
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-_SGAI_DIR = os.path.normpath(os.path.join(_THIS_DIR, "..", "scrapeGraphAi"))
+_SGAI_DIR = os.path.normpath(os.path.join(_THIS_DIR, "..", "scrapegraphai"))
 if _SGAI_DIR not in sys.path:
     sys.path.insert(0, _SGAI_DIR)
 
