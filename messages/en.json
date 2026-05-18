@@ -228,7 +228,7 @@
     "scopeKundS": "Art and Sports Gymnasium",
     "sourceLabel": "Source: zh.ch ·",
     "regBetween": "{from} to {to}",
-    "disclaimer": "This data is manually verified from official sources (zh.ch). The official information of the Canton of Zurich is always authoritative. A fully automated update via web scraping is defined as future work in the roadmap.",
+    "disclaimer": "This data is extracted via zap_info_scraper.py (ScrapeGraphAI with the BFH LLM) from official zh.ch sources and manually verified. The official information of the Canton of Zurich is always authoritative. Wiring this scraper into an automated pipeline (cron) is defined as future work.",
     "quickInfoTitle": "Important dates",
     "heroBanner": "Next examination",
     "timelineRegistration": "Registration",

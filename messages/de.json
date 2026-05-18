@@ -228,7 +228,7 @@
     "scopeKundS": "Kunst- und Sportgymnasium",
     "sourceLabel": "Quelle: zh.ch ·",
     "regBetween": "{from} bis {to}",
-    "disclaimer": "Diese Daten werden manuell aus offiziellen Quellen (zh.ch) verifiziert. Massgeblich sind stets die offiziellen Angaben des Kantons Zürich. Eine vollautomatisierte Aktualisierung über Web-Scraping ist als Future Work in der Roadmap definiert.",
+    "disclaimer": "Diese Daten werden über zap_info_scraper.py (ScrapeGraphAI mit BFH-LLM) aus offiziellen zh.ch-Quellen extrahiert und manuell verifiziert. Massgeblich sind stets die offiziellen Angaben des Kantons Zürich. Die Anbindung an eine automatisierte Pipeline (Cron) ist als Future Work definiert.",
     "quickInfoTitle": "Wichtige Termine",
     "heroBanner": "Nächste Prüfung",
     "timelineRegistration": "Anmeldung",

@@ -1,4 +1,4 @@
-﻿# Comparison Portal for Grammar School Preparation Courses
+# Comparison Portal for Grammar School Preparation Courses
 
 > **Bachelor Thesis** · Bern University of Applied Sciences (BFH) · Department of Business · BSc Business Information Technology · 2026
 
@@ -188,8 +188,24 @@ from the `zap_info` Supabase table. Each entry includes:
 - `last_verified_at` timestamp
 - `updated_by` flag (`manual` or `scraper:zh.ch`)
 
-Currently the table is populated manually with verified zh.ch data. A scraper for
-zh.ch is defined as Future Work.
+The table is populated by `scraping/zap-info/zap_info_scraper.py`, an
+AI-supported ScrapeGraphAI scraper that extracts exam information from the
+official zh.ch pages (Langgymnasium and Kurzgymnasium). The script is executed
+manually once per school year (exam dates only change annually) and the output
+is reviewed before being committed to the database.
+
+**Why not fully scheduled?** A nightly cron job would be overengineered for
+data that changes once per year. More importantly, a hallucinated LLM response
+could silently corrupt authoritative exam-date data — the cost of a wrong
+`exam_date` value in production is high (parents and students rely on it).
+The current half-automated approach (extract → human review → upsert) prioritizes
+data integrity over zero-touch automation. Wiring the scraper into a cron-based
+pipeline (GitHub Actions or Supabase Edge Functions) is technically trivial
+(~20 lines of YAML) and is documented as Future Work, contingent on:
+
+- LLM output validation (sanity checks on date ranges, registration windows)
+- Failure logging into `scrape_runs` / `scrape_errors` (consistent with other scrapers)
+- Integration into the AI self-healing loop for prompt repair when zh.ch changes its page structure
 
 ### AI Self-Healing Loop
 
