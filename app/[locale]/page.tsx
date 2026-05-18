@@ -97,8 +97,10 @@ const HomePage = async ({
     courseType,
   );
 
-  // Hero-Stats sollen die VOLLE Datenbasis zeigen (nicht gefiltert),
-  // damit "12 Anbieter, 145 Kurse" ehrlich bleibt
+  // Hero-Stats spiegeln die im UI sichtbare Datenbasis (PRIMARY_SCRAPER_METHOD).
+  // Wir zählen bewusst NICHT alle scraped Kurse (das würde Duplikate aus den
+  // drei Scraping-Methoden inkludieren), sondern nur diejenigen, die auch
+  // tatsächlich auf der Vergleichsseite gerendert werden.
   const nextExamDate = nextZap[0]?.exam_date
     ? formatDate(nextZap[0].exam_date, locale)
     : null;

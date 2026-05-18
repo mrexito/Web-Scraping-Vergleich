@@ -1,12 +1,23 @@
 """
-sGAI_logosLehrerteamScraper.py (refactored)
-============================================
+sGAI_logosLehrerteamScraper.py (refactored + Self-Healing Roundtrip)
+=====================================================================
 ScrapeGraphAI-Scraper für Logos Lehrerteam.
 Scrapt 3 Seiten: Übersicht (Metadaten) + Kursdaten + Kosten.
 Besonderheit: baut Kurse aus Template zusammen, dupliziert für beide Kurstypen.
+
+SELF-HEALING ROUNDTRIP:
+-----------------------
+Liest beim Start aus scraper_registry (field_name='prompts'):
+  - 'metadata'  → Anbieter-Metadaten
+  - 'kursdaten' → Kursdaten / Templates
+  - 'kosten'    → Preisinformationen
+Alle 3 Prompts sind eigenständig (keine Ableitung).
+Fallback: HARDCODED_PROMPTS.
 """
 
 import json
+import os
+import sys
 import time
 from scrapegraphai.graphs import SmartScraperGraph
 
@@ -22,6 +33,14 @@ from scrape_utils import (
     ScrapeRun,
 )
 
+# Registry-Helpers verfügbar machen
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+_HEALING_DIR = os.path.normpath(os.path.join(_THIS_DIR, "..", "self-healing"))
+if _HEALING_DIR not in sys.path:
+    sys.path.insert(0, _HEALING_DIR)
+
+from registry_helpers import get_current_value  # noqa: E402
+
 
 SCRAPER_METHOD = "scrapegraphai"
 PROVIDER_ID    = 10
@@ -31,7 +50,8 @@ ANMELDUNG_URL  = f"{BASE_URL}/kurse-gymivorbereitung-zap-anmeldung"
 KURSTYPEN      = ("langgymi", "kurzgymi")
 
 
-PROMPT_METADATA = """
+HARDCODED_PROMPTS = {
+    "metadata": """
 Du bist ein Datenextraktions-Assistent. Analysiere diese Seite semantisch:
 
 - aufsatzkorrektur: true wenn Aufsatztraining, Aufsatzkurs oder Schreibtraining erwähnt wird
@@ -47,9 +67,8 @@ Du bist ein Datenextraktions-Assistent. Analysiere diese Seite semantisch:
 - standorte: Liste aller Kursorte
 
 Antworte NUR mit reinem JSON: {"metadata": {...}}
-"""
-
-PROMPT_KURSDATEN = """
+""",
+    "kursdaten": """
 Extrahiere alle Kursinformationen. Kurse in 3 Teile (Teil 1, 2, 3) an Mittwoch oder Samstag.
 Ausserdem Ferienkurse (Intensivkurse).
 
@@ -62,9 +81,8 @@ Für jeden Kursabschnitt:
 - dauer_wochen: Zahl
 
 Antworte NUR mit reinem JSON: {"kurse": [...]}
-"""
-
-PROMPT_KOSTEN = """
+""",
+    "kosten": """
 Extrahiere Preisinformationen:
 - preis_gesamt: Gesamtpreis alle 3 Teile bei Frühbuchung als Zahl in CHF
 - preis_regulaer: Regulärpreis ohne Rabatt in CHF
@@ -72,7 +90,28 @@ Extrahiere Preisinformationen:
 - lehrmittel_inbegriffen: bool
 
 Antworte NUR mit reinem JSON: {"kosten": {...}}
-"""
+""",
+}
+
+
+def load_prompts() -> dict:
+    """Lädt alle Prompts aus scraper_registry (field_name='prompts').
+
+    Fällt auf HARDCODED_PROMPTS zurück, wenn Registry leer/ungültig.
+    Fehlende Keys werden aus HARDCODED_PROMPTS ergänzt.
+    """
+    registry_value = get_current_value(PROVIDER_ID, SCRAPER_METHOD, "prompts")
+    if registry_value:
+        try:
+            loaded = json.loads(registry_value)
+            merged = {**HARDCODED_PROMPTS, **loaded}
+            print(f"  ✓ {len(loaded)} Prompt(s) aus scraper_registry geladen")
+            return merged
+        except json.JSONDecodeError:
+            print("  ⚠ Registry-JSON ungültig — Fallback auf HARDCODED_PROMPTS")
+            return HARDCODED_PROMPTS
+    print("  ℹ Kein Registry-Eintrag — verwende HARDCODED_PROMPTS als Fallback")
+    return HARDCODED_PROMPTS
 
 
 def scrape_page(url: str, prompt: str) -> dict:
@@ -201,6 +240,9 @@ def main():
         print("  Abbruch: BFH LLM nicht erreichbar.")
         return
 
+    # ROUNDTRIP: Prompts aus scraper_registry laden (mit Fallback)
+    active_prompts = load_prompts()
+
     with ScrapeRun(SCRAPER_METHOD, PROVIDER_ID) as run:
         metadata = {}
         kursdaten_result = {}
@@ -209,7 +251,7 @@ def main():
         try:
             print(f"\n  Schritt 1: Metadaten scrapen")
             metadata = (scrape_page(f"{BASE_URL}/kurse-gymivorbereitung-zap-uebersicht",
-                                    PROMPT_METADATA).get("metadata") or {})
+                                    active_prompts["metadata"]).get("metadata") or {})
             time.sleep(2)
         except Exception as e:
             log_scrape_error(run.id, PROVIDER_ID, "SCRAPING_ERROR", f"Metadaten: {e}")
@@ -218,7 +260,7 @@ def main():
         try:
             print(f"\n  Schritt 2: Kursdaten scrapen")
             kursdaten_result = scrape_page(
-                f"{BASE_URL}/kurse-gymivorbereitung-zap-kursdaten", PROMPT_KURSDATEN)
+                f"{BASE_URL}/kurse-gymivorbereitung-zap-kursdaten", active_prompts["kursdaten"])
             time.sleep(2)
         except Exception as e:
             log_scrape_error(run.id, PROVIDER_ID, "SCRAPING_ERROR", f"Kursdaten: {e}")
@@ -227,7 +269,7 @@ def main():
         try:
             print(f"\n  Schritt 3: Kosten scrapen")
             kosten_result = scrape_page(
-                f"{BASE_URL}/kurse-gymivorbereitung-zap-kosten", PROMPT_KOSTEN)
+                f"{BASE_URL}/kurse-gymivorbereitung-zap-kosten", active_prompts["kosten"])
             time.sleep(2)
         except Exception as e:
             log_scrape_error(run.id, PROVIDER_ID, "SCRAPING_ERROR", f"Kosten: {e}")

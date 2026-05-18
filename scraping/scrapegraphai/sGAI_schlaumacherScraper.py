@@ -1,11 +1,18 @@
 """
-sGAI_schlaumacherScraper.py (NATIV ScrapeGraphAI + chunk_size)
-========================================================================
+sGAI_schlaumacherScraper.py (NATIV ScrapeGraphAI + chunk_size + Self-Healing Roundtrip)
+========================================================================================
 Nutzt nativ SmartScraperGraph mit der erweiterten graph_config
 (chunk_size=4000) aus scrape_utils.
+
+SELF-HEALING ROUNDTRIP:
+-----------------------
+Liest beim Start den Prompt aus scraper_registry (field_name='prompts',
+Key 'overview'). Fallback: HARDCODED_PROMPTS['overview'].
 """
 
 import json
+import os
+import sys
 import time
 from scrapegraphai.graphs import SmartScraperGraph
 
@@ -21,6 +28,14 @@ from scrape_utils import (
     ScrapeRun,
 )
 
+# Registry-Helpers verfügbar machen
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+_HEALING_DIR = os.path.normpath(os.path.join(_THIS_DIR, "..", "self-healing"))
+if _HEALING_DIR not in sys.path:
+    sys.path.insert(0, _HEALING_DIR)
+
+from registry_helpers import get_current_value  # noqa: E402
+
 
 SCRAPER_METHOD = "scrapegraphai"
 PROVIDER_ID    = 9
@@ -29,7 +44,8 @@ BASE_URL       = "https://www.schlaumacher.ch"
 OVERVIEW_URL   = f"{BASE_URL}/gymivorbereitung-zuerich/"
 
 
-PROMPT_OVERVIEW = """
+HARDCODED_PROMPTS = {
+    "overview": """
 Du bist ein Datenextraktions-Assistent für eine Vergleichsplattform von Gymi-Vorbereitungskursen.
 
 Extrahiere ALLE Kurse von dieser Seite. Für jeden Kurs gib zurück:
@@ -54,7 +70,28 @@ Extrahiere ausserdem Anbieter-Metadaten:
 - standorte: Liste
 
 Antworte NUR mit reinem JSON: {"courses": [...], "metadata": {...}}
-"""
+""",
+}
+
+
+def load_prompts() -> dict:
+    """Lädt alle Prompts aus scraper_registry (field_name='prompts').
+
+    Fällt auf HARDCODED_PROMPTS zurück, wenn Registry leer/ungültig.
+    Fehlende Keys werden aus HARDCODED_PROMPTS ergänzt.
+    """
+    registry_value = get_current_value(PROVIDER_ID, SCRAPER_METHOD, "prompts")
+    if registry_value:
+        try:
+            loaded = json.loads(registry_value)
+            merged = {**HARDCODED_PROMPTS, **loaded}
+            print(f"  ✓ {len(loaded)} Prompt(s) aus scraper_registry geladen")
+            return merged
+        except json.JSONDecodeError:
+            print("  ⚠ Registry-JSON ungültig — Fallback auf HARDCODED_PROMPTS")
+            return HARDCODED_PROMPTS
+    print("  ℹ Kein Registry-Eintrag — verwende HARDCODED_PROMPTS als Fallback")
+    return HARDCODED_PROMPTS
 
 
 def scrape_page(url: str, prompt: str) -> dict:
@@ -154,9 +191,12 @@ def main():
         print("  Abbruch: BFH LLM nicht erreichbar.")
         return
 
+    # ROUNDTRIP: Prompts aus scraper_registry laden (mit Fallback)
+    active_prompts = load_prompts()
+
     with ScrapeRun(SCRAPER_METHOD, PROVIDER_ID) as run:
         try:
-            result = scrape_page(OVERVIEW_URL, PROMPT_OVERVIEW)
+            result = scrape_page(OVERVIEW_URL, active_prompts["overview"])
         except Exception as e:
             msg = f"Fehler beim Scraping: {e}"
             print(f"  ✗ {msg}")

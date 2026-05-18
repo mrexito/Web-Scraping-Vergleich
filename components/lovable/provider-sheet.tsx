@@ -2,7 +2,7 @@
 import {Check, ExternalLink, Star, X, MapPin, ChevronDown} from 'lucide-react';
 import {useEffect} from 'react';
 import {useTranslations} from 'next-intl';
-import type {Provider} from '@/lib/mock-providers';
+import type {Provider} from '@/lib/provider-types';
 import {formatCHF} from '@/lib/format';
 import {cn} from '@/lib/utils';
 

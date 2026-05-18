@@ -1,7 +1,7 @@
 ﻿import type { GymiProvider } from '@/schemas/gymiProviderSchema';
 import type { Course as DbCourse } from '@/schemas/courseSchema';
 import type { CourseDetail } from '@/schemas/courseDetailSchema';
-import type { Provider, Course as ProviderCourse, Availability } from '@/lib/mock-providers';
+import type { Provider, Course as ProviderCourse, Availability } from '@/lib/provider-types';
 
 // =====================================================================
 // TYPES
@@ -142,6 +142,28 @@ export function offersCourseType(
 }
 
 // =====================================================================
+// SCORE-KONSTANTEN
+// =====================================================================
+// Diese Schwellwerte definieren, ab wann ein Kriterium den maximalen
+// Sub-Score (1.0) erreicht. Die Werte basieren auf der empirischen
+// Verteilung der 12 untersuchten Anbieter im Kanton Zürich:
+//
+//   • MAX_LOCATIONS_FOR_FULL_SCORE = 5
+//     Der Anbieter mit dem dichtesten Standortnetz (Lern-Forum) bedient
+//     6 Standorte. Eine Skala 0-5 stellt sicher, dass schon 5 Standorte
+//     mit Volltreffer bewertet werden — alles darüber ist gleichwertig.
+//
+//   • MIN_DAYS_FOR_FLEXIBILITY = 3
+//     Mehr als zwei Unterrichtstage pro Woche signalisieren echte
+//     Termin-Flexibilität (klassische Anbieter sind auf Mi/Sa beschränkt).
+//
+// Die Werte sind bewusst im Modul lokalisiert, damit der MCDA-Bereich
+// nachvollziehbar in der Thesis-Sektion zur Score-Berechnung dokumentiert
+// werden kann.
+const MAX_LOCATIONS_FOR_FULL_SCORE = 5;
+const MIN_DAYS_FOR_FLEXIBILITY = 3;
+
+// =====================================================================
 // SUB-SCORE-BERECHNUNG (zentrale MCDA-Logik, kurstyp-aware)
 // =====================================================================
 
@@ -164,15 +186,15 @@ function calculateSubScores(
   const q = detail?.Qualitaetsbewertung ?? 2;
   const qualityScore = q === 1 ? 1 : q === 2 ? 2 / 3 : 1 / 3;
 
-  // 3. STANDORT — Anzahl unique Locations (max 5 → 1.0)
+  // 3. STANDORT — Anzahl unique Locations, normalisiert auf [0,1]
   const locCount = uniqueLocations(providerCourses).length;
-  const locScore = Math.min(1, locCount / 5);
+  const locScore = Math.min(1, locCount / MAX_LOCATIONS_FOR_FULL_SCORE);
 
   // 4. FLEXIBILITÄT — online + ausserhalb-Unterstützung + mehrere Wochentage
   const flexBools = [
     providerCourses.some((c) => c.is_online === true),
     detail?.['Unterstuezung ausserhalb Unterrichtszeit'] ?? false,
-    uniqueTeachingDays(providerCourses).length >= 3,
+    uniqueTeachingDays(providerCourses).length >= MIN_DAYS_FOR_FLEXIBILITY,
   ];
   const flexScore = flexBools.filter(Boolean).length / flexBools.length;
 

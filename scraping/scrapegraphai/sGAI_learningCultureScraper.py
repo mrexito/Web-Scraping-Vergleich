@@ -1,6 +1,6 @@
 """
-sGAI_learningCultureScraper.py
-===============================
+sGAI_learningCultureScraper.py (+ Self-Healing Roundtrip)
+===========================================================
 ScrapeGraphAI-Scraper für Learning Culture (Provider 4).
 
 Nutzt nativ SmartScraperGraph aus ScrapeGraphAI mit der erweiterten
@@ -12,10 +12,24 @@ Scrapt 5 Schritte:
   3. Kurzgymi Teil 1+/1
   4. Kurzgymi Teil 2
   5. Probezeit-Kurse
+
+SELF-HEALING ROUNDTRIP:
+-----------------------
+Liest beim Start aus scraper_registry (field_name='prompts'):
+  - 'meta'          → Anbieter-Metadaten
+  - 'langgymi_kurse' → Langgymi-Kurstermine
+  - 'kurzgymi_t1'   → Kurzgymi Teil 1+ / Teil 1
+  - 'kurzgymi_t2'   → Kurzgymi Teil 2
+  - 'probezeit'     → Probezeit-Kurse
+Alle 5 Prompts sind eigenständig — Learning Culture hat
+unterschiedliche Tabellen-Strukturen pro Kursart, deshalb keine Ableitung.
+Fallback: HARDCODED_PROMPTS.
 """
 
 import json
+import os
 import re
+import sys
 import time
 from scrapegraphai.graphs import SmartScraperGraph
 
@@ -30,6 +44,14 @@ from scrape_utils import (
     log_scrape_error,
     ScrapeRun,
 )
+
+# Registry-Helpers verfügbar machen
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+_HEALING_DIR = os.path.normpath(os.path.join(_THIS_DIR, "..", "self-healing"))
+if _HEALING_DIR not in sys.path:
+    sys.path.insert(0, _HEALING_DIR)
+
+from registry_helpers import get_current_value  # noqa: E402
 
 
 SCRAPER_METHOD     = "scrapegraphai"
@@ -49,72 +71,94 @@ def extract_json_from_string(raw: str) -> dict:
     return _base_extract_json(raw)
 
 
-PROMPT_META = (
-    "Du bist ein Datenextraktions-Assistent. Extrahiere NUR die Metadaten (keine Kurse):\n"
-    "- aufsatzkorrektur, einstufungstest, e_learning, pruefungsarchiv, beratungsgespraech, "
-    "lernunterlagen, pruefungssimulation, einzelkurse, unterstuetzung_ausserhalb (alle als bool)\n"
-    "- unterstuetzung_ausserhalb: true wenn Nachholoptionen, Aufholstunden, Hausaufgabenbetreuung, "
-    "Wiederholung verpasster Lektionen oder Unterstützung ausserhalb der Unterrichtszeiten "
-    "angeboten wird\n"
-    "- max_teilnehmer: Zahl\n"
-    "- standorte: Liste\n"
-    'Antworte NUR mit reinem JSON: {"metadata": {...}}'
-)
+HARDCODED_PROMPTS = {
+    "meta": (
+        "Du bist ein Datenextraktions-Assistent. Extrahiere NUR die Metadaten (keine Kurse):\n"
+        "- aufsatzkorrektur, einstufungstest, e_learning, pruefungsarchiv, beratungsgespraech, "
+        "lernunterlagen, pruefungssimulation, einzelkurse, unterstuetzung_ausserhalb (alle als bool)\n"
+        "- unterstuetzung_ausserhalb: true wenn Nachholoptionen, Aufholstunden, Hausaufgabenbetreuung, "
+        "Wiederholung verpasster Lektionen oder Unterstützung ausserhalb der Unterrichtszeiten "
+        "angeboten wird\n"
+        "- max_teilnehmer: Zahl\n"
+        "- standorte: Liste\n"
+        'Antworte NUR mit reinem JSON: {"metadata": {...}}'
+    ),
 
-# Robusterer Langgymi-Prompt:
-# Vorher zu spezifisch auf "Teil 1+, Teil 1, Teil 2" gezielt — auf der
-# Langgymi-Seite heißen die Kurse anders (z.B. nur "Kurs", "Vorbereitung",
-# "Intensivkurs"). Jetzt: alles extrahieren was wie ein Kurs aussieht.
-PROMPT_LANGGYMI_KURSE = (
-    "Du bist ein Datenextraktions-Assistent. Extrahiere ALLE Kurstermine, "
-    "Kurse oder Anmelde-Einträge die auf dieser Seite erscheinen — egal "
-    "wie sie genannt sind (z.B. 'Kurs', 'Vorbereitungskurs', 'Teil 1', "
-    "'Teil 1+', 'Teil 2', 'Intensivkurs', 'Sportferienkurs', "
-    "'Simulationsprüfung', 'Themenkurs', oder einfach nur Datums-/Zeit-Angaben "
-    "in einer Tabelle).\n\n"
-    "Typische Hinweise auf einen Kurs: Wochentag + Uhrzeit + Datum + Preis + Ort.\n"
-    "Wenn du eine Tabelle mit Anmelde-Buttons siehst, extrahiere JEDE Zeile.\n\n"
-    "Für jeden Kurs gib zurück:\n"
-    "- title: Was der Kurs auf der Seite heißt (z.B. 'Teil 1', 'Kurs A', "
-    "'Vorbereitungskurs', 'Intensivkurs Herbstferien'). Wenn kein Name "
-    "erkennbar: 'Gymivorbereitung'.\n"
-    "- weekday: Wochentag (Montag, Mittwoch, Samstag, ...)\n"
-    "- course_time: Kurszeit (z.B. '13:30 - 16:45')\n"
-    "- location: Ort (z.B. 'Zürich Stadelhofen', 'Winterthur', 'Horgen')\n"
-    "- start_date, end_date: Format TT.MM.JJJJ\n"
-    "- price_chf: Preis als Zahl\n"
-    "- availability: 'ausgebucht' wenn ausgebucht, sonst 'viele'\n\n"
-    "WICHTIG: Auch wenn die Kursnamen nicht 'Teil 1+/1/2' sind — extrahiere "
-    "trotzdem alles. Lieber zu viele Kurse als zu wenige.\n"
-    'Antworte NUR mit reinem JSON: {"courses": [...]}'
-)
+    # Robusterer Langgymi-Prompt:
+    # Vorher zu spezifisch auf "Teil 1+, Teil 1, Teil 2" gezielt — auf der
+    # Langgymi-Seite heißen die Kurse anders (z.B. nur "Kurs", "Vorbereitung",
+    # "Intensivkurs"). Jetzt: alles extrahieren was wie ein Kurs aussieht.
+    "langgymi_kurse": (
+        "Du bist ein Datenextraktions-Assistent. Extrahiere ALLE Kurstermine, "
+        "Kurse oder Anmelde-Einträge die auf dieser Seite erscheinen — egal "
+        "wie sie genannt sind (z.B. 'Kurs', 'Vorbereitungskurs', 'Teil 1', "
+        "'Teil 1+', 'Teil 2', 'Intensivkurs', 'Sportferienkurs', "
+        "'Simulationsprüfung', 'Themenkurs', oder einfach nur Datums-/Zeit-Angaben "
+        "in einer Tabelle).\n\n"
+        "Typische Hinweise auf einen Kurs: Wochentag + Uhrzeit + Datum + Preis + Ort.\n"
+        "Wenn du eine Tabelle mit Anmelde-Buttons siehst, extrahiere JEDE Zeile.\n\n"
+        "Für jeden Kurs gib zurück:\n"
+        "- title: Was der Kurs auf der Seite heißt (z.B. 'Teil 1', 'Kurs A', "
+        "'Vorbereitungskurs', 'Intensivkurs Herbstferien'). Wenn kein Name "
+        "erkennbar: 'Gymivorbereitung'.\n"
+        "- weekday: Wochentag (Montag, Mittwoch, Samstag, ...)\n"
+        "- course_time: Kurszeit (z.B. '13:30 - 16:45')\n"
+        "- location: Ort (z.B. 'Zürich Stadelhofen', 'Winterthur', 'Horgen')\n"
+        "- start_date, end_date: Format TT.MM.JJJJ\n"
+        "- price_chf: Preis als Zahl\n"
+        "- availability: 'ausgebucht' wenn ausgebucht, sonst 'viele'\n\n"
+        "WICHTIG: Auch wenn die Kursnamen nicht 'Teil 1+/1/2' sind — extrahiere "
+        "trotzdem alles. Lieber zu viele Kurse als zu wenige.\n"
+        'Antworte NUR mit reinem JSON: {"courses": [...]}'
+    ),
 
-PROMPT_KURZGYMI_T1 = (
-    "Extrahiere ALLE Teil 1+ und Teil 1 Kurstermine.\n"
-    "Für jeden: title (Teil 1+ oder Teil 1), weekday, course_time, location, "
-    "start_date, end_date (TT.MM.JJJJ), price_chf (Teil 1+: 3190, Teil 1: 1890), "
-    "availability.\n"
-    'Antworte NUR mit reinem JSON: {"courses": [...]}'
-)
+    "kurzgymi_t1": (
+        "Extrahiere ALLE Teil 1+ und Teil 1 Kurstermine.\n"
+        "Für jeden: title (Teil 1+ oder Teil 1), weekday, course_time, location, "
+        "start_date, end_date (TT.MM.JJJJ), price_chf (Teil 1+: 3190, Teil 1: 1890), "
+        "availability.\n"
+        'Antworte NUR mit reinem JSON: {"courses": [...]}'
+    ),
 
-PROMPT_KURZGYMI_T2 = (
-    "Extrahiere die Teil 2 Kurstermine.\n"
-    "Für jeden: title (Teil 2), weekday, course_time, location, start_date, end_date, "
-    "price_chf (~2110), availability.\n"
-    'Antworte NUR mit reinem JSON: {"courses": [...]}'
-)
+    "kurzgymi_t2": (
+        "Extrahiere die Teil 2 Kurstermine.\n"
+        "Für jeden: title (Teil 2), weekday, course_time, location, start_date, end_date, "
+        "price_chf (~2110), availability.\n"
+        'Antworte NUR mit reinem JSON: {"courses": [...]}'
+    ),
 
-PROMPT_PROBEZEIT = (
-    "Extrahiere ALLE Probezeit-Kurse. Für jeden:\n"
-    "- title (z.B. 'Langgymi Mathematik')\n"
-    "- course_type: 'langgymi' oder 'kurzgymi'\n"
-    "- weekday, course_time, location\n"
-    "- start_date, end_date (TT.MM.JJJJ)\n"
-    "- price_chf (~980)\n"
-    "- availability\n"
-    "- is_online: false\n"
-    'Antworte NUR mit reinem JSON: {"courses": [...]}'
-)
+    "probezeit": (
+        "Extrahiere ALLE Probezeit-Kurse. Für jeden:\n"
+        "- title (z.B. 'Langgymi Mathematik')\n"
+        "- course_type: 'langgymi' oder 'kurzgymi'\n"
+        "- weekday, course_time, location\n"
+        "- start_date, end_date (TT.MM.JJJJ)\n"
+        "- price_chf (~980)\n"
+        "- availability\n"
+        "- is_online: false\n"
+        'Antworte NUR mit reinem JSON: {"courses": [...]}'
+    ),
+}
+
+
+def load_prompts() -> dict:
+    """Lädt alle Prompts aus scraper_registry (field_name='prompts').
+
+    Fällt auf HARDCODED_PROMPTS zurück, wenn Registry leer/ungültig.
+    Fehlende Keys werden aus HARDCODED_PROMPTS ergänzt.
+    """
+    registry_value = get_current_value(PROVIDER_ID, SCRAPER_METHOD, "prompts")
+    if registry_value:
+        try:
+            loaded = json.loads(registry_value)
+            merged = {**HARDCODED_PROMPTS, **loaded}
+            print(f"  ✓ {len(loaded)} Prompt(s) aus scraper_registry geladen")
+            return merged
+        except json.JSONDecodeError:
+            print("  ⚠ Registry-JSON ungültig — Fallback auf HARDCODED_PROMPTS")
+            return HARDCODED_PROMPTS
+    print("  ℹ Kein Registry-Eintrag — verwende HARDCODED_PROMPTS als Fallback")
+    return HARDCODED_PROMPTS
 
 
 def scrape_page(url: str, prompt: str) -> dict:
@@ -246,12 +290,15 @@ def main():
         print("  Abbruch: BFH LLM nicht erreichbar.")
         return
 
+    # ROUNDTRIP: Prompts aus scraper_registry laden (mit Fallback)
+    active_prompts = load_prompts()
+
     with ScrapeRun(SCRAPER_METHOD, PROVIDER_ID) as run:
         metadata = {}
 
         try:
             print(f"\n  Schritt 1: Metadaten")
-            meta_result = scrape_page(LANGGYMI_URL, PROMPT_META)
+            meta_result = scrape_page(LANGGYMI_URL, active_prompts["meta"])
             metadata = meta_result.get("metadata", {}) or {}
             time.sleep(2)
         except Exception as e:
@@ -260,16 +307,16 @@ def main():
 
         all_courses = []
         all_courses += _scrape_block(run, "Schritt 2: Langgymi-Kurse",
-                                     LANGGYMI_URL, PROMPT_LANGGYMI_KURSE,
+                                     LANGGYMI_URL, active_prompts["langgymi_kurse"],
                                      force_type="langgymi")
         all_courses += _scrape_block(run, "Schritt 3: Kurzgymi Teil 1+/1",
-                                     KURZGYMI_URL, PROMPT_KURZGYMI_T1,
+                                     KURZGYMI_URL, active_prompts["kurzgymi_t1"],
                                      force_type="kurzgymi")
         all_courses += _scrape_block(run, "Schritt 4: Kurzgymi Teil 2",
-                                     KURZGYMI_URL, PROMPT_KURZGYMI_T2,
+                                     KURZGYMI_URL, active_prompts["kurzgymi_t2"],
                                      force_type="kurzgymi")
         all_courses += _scrape_block(run, "Schritt 5: Probezeit",
-                                     PROBEZEIT_URL, PROMPT_PROBEZEIT)
+                                     PROBEZEIT_URL, active_prompts["probezeit"])
 
         print(f"\n  Gesamt: {len(all_courses)} Kurse")
 

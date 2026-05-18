@@ -53,9 +53,9 @@ This structure provides:
 
 ### Data Layer
 - Supabase (PostgreSQL) with normalized schema
-  - `GymiProviders`, `CourseDetails`, `courses`
-  - `zap_info` (ZAP terms and exam information)
-  - `scrape_runs`, `scrape_errors`, `price_history`
+  - **8 tables**: `GymiProviders`, `CourseDetails`, `courses`, `zap_info`,
+    `scrape_runs`, `scrape_errors`, `price_history`, `scraper_registry`
+  - **1 view**: `providers` (legacy compatibility for older join syntax)
 - Auto-generated TypeScript types via `supabase gen types`
 
 ### Scraping Frameworks
@@ -227,8 +227,3 @@ Email: martt8@bfh.ch
   has read-only access to comparison data.
 
 ---
-
-## Future Work
-
-- **zh.ch ZAP scraper** — Automatically refresh the `zap_info` table from official sources
-- **User accounts** — Save personal weightings, get notified about new courses

@@ -1,13 +1,25 @@
 """
-sGAI_gymivorbereitungFokusScraper.py (refactored)
-==================================================
+sGAI_gymivorbereitungFokusScraper.py (refactored + Self-Healing Roundtrip)
+============================================================================
 ScrapeGraphAI-Scraper für Gymivorbereitung Fokus.
 Scrapt 5 Seiten: Hauptseite (Metadaten) + Langgymi-Main + Kurzgymi-Main
 + Langgymi-Kurse + Kurzgymi-Kurse.
 Besonderheit: Kurs-Daten aus Kalenderwochen statt Datum.
+
+SELF-HEALING ROUNDTRIP:
+-----------------------
+Liest beim Start aus scraper_registry (field_name='prompts'):
+  - 'overview' → Anbieter-Metadaten
+  - 'langgymi' → Langgymi-Kurse
+Der kurzgymi-Prompt wird aus dem langgymi-Prompt abgeleitet (String-Replace
+'Langzeit'→'Kurzzeit'). Damit pflegt der Self-Healing-Loop nur EINE
+Variante; die Symmetrie der Provider-Website-Sprache wird respektiert.
+Fallback: HARDCODED_PROMPTS.
 """
 
 import json
+import os
+import sys
 import time
 import datetime
 from scrapegraphai.graphs import SmartScraperGraph
@@ -24,6 +36,14 @@ from scrape_utils import (
     ScrapeRun,
 )
 
+# Registry-Helpers verfügbar machen
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+_HEALING_DIR = os.path.normpath(os.path.join(_THIS_DIR, "..", "self-healing"))
+if _HEALING_DIR not in sys.path:
+    sys.path.insert(0, _HEALING_DIR)
+
+from registry_helpers import get_current_value  # noqa: E402
+
 
 SCRAPER_METHOD     = "scrapegraphai"
 PROVIDER_ID        = 5
@@ -38,36 +58,59 @@ ANMELDUNG_LANG_URL = f"{BASE_URL}/kurse/gymivorbereitungskurs-langzeit#form"
 ANMELDUNG_KURZ_URL = f"{BASE_URL}/kurse/gymivorbereitungskurs-kurzzeit#form"
 
 
-PROMPT_OVERVIEW = (
-    "Du bist ein Datenextraktions-Assistent. Extrahiere Anbieter-Metadaten von dieser Seite:\n"
-    "- aufsatzkorrektur, einstufungstest, e_learning, pruefungsarchiv, beratungsgespraech, "
-    "lernunterlagen, pruefungssimulation, einzelkurse, unterstuetzung_ausserhalb (alle als bool)\n"
-    "- unterstuetzung_ausserhalb: true wenn Nachholoptionen, Aufholstunden, Hausaufgabenbetreuung, "
-    "Wiederholung verpasster Lektionen oder Unterstützung ausserhalb der Unterrichtszeiten "
-    "angeboten wird\n"
-    "- max_teilnehmer: Zahl\n"
-    "- standorte: Liste\n"
-    'Antworte NUR mit reinem JSON: {"metadata": {...}}'
-)
+HARDCODED_PROMPTS = {
+    "overview": (
+        "Du bist ein Datenextraktions-Assistent. Extrahiere Anbieter-Metadaten von dieser Seite:\n"
+        "- aufsatzkorrektur, einstufungstest, e_learning, pruefungsarchiv, beratungsgespraech, "
+        "lernunterlagen, pruefungssimulation, einzelkurse, unterstuetzung_ausserhalb (alle als bool)\n"
+        "- unterstuetzung_ausserhalb: true wenn Nachholoptionen, Aufholstunden, Hausaufgabenbetreuung, "
+        "Wiederholung verpasster Lektionen oder Unterstützung ausserhalb der Unterrichtszeiten "
+        "angeboten wird\n"
+        "- max_teilnehmer: Zahl\n"
+        "- standorte: Liste\n"
+        'Antworte NUR mit reinem JSON: {"metadata": {...}}'
+    ),
+    "langgymi": (
+        "Du bist ein Datenextraktions-Assistent. Extrahiere ALLE Kurse und Preise.\n"
+        "Für jeden Kurs:\n"
+        "- kurs_id: Kurs-Buchstabe\n"
+        "- weekday: Wochentag (Mittwoch/Samstag/...)\n"
+        "- course_time: Kurszeit\n"
+        "- location: echter Standortname (Zürich HB, Bülach, Winterthur, Stadelhofen, Wetzikon, "
+        "Uster, Meilen, Horgen, Wädenswil, Schaffhausen, Online). NIE 'NA' oder 'unbekannt'.\n"
+        "- is_online: bool\n"
+        "Zusätzlich:\n"
+        "- price_chf, price_online_chf (Zahlen)\n"
+        "- start_kw, end_kw (Kalenderwochen als Zahl)\n"
+        "- num_kurstage (Zahl)\n"
+        'Antworte NUR mit JSON: {"courses": [...], "price_chf": ..., "price_online_chf": ..., '
+        '"start_kw": ..., "end_kw": ..., "num_kurstage": ...}'
+    ),
+}
 
-PROMPT_LANGGYMI = (
-    "Du bist ein Datenextraktions-Assistent. Extrahiere ALLE Kurse und Preise.\n"
-    "Für jeden Kurs:\n"
-    "- kurs_id: Kurs-Buchstabe\n"
-    "- weekday: Wochentag (Mittwoch/Samstag/...)\n"
-    "- course_time: Kurszeit\n"
-    "- location: echter Standortname (Zürich HB, Bülach, Winterthur, Stadelhofen, Wetzikon, "
-    "Uster, Meilen, Horgen, Wädenswil, Schaffhausen, Online). NIE 'NA' oder 'unbekannt'.\n"
-    "- is_online: bool\n"
-    "Zusätzlich:\n"
-    "- price_chf, price_online_chf (Zahlen)\n"
-    "- start_kw, end_kw (Kalenderwochen als Zahl)\n"
-    "- num_kurstage (Zahl)\n"
-    'Antworte NUR mit JSON: {"courses": [...], "price_chf": ..., "price_online_chf": ..., '
-    '"start_kw": ..., "end_kw": ..., "num_kurstage": ...}'
-)
 
-PROMPT_KURZGYMI = PROMPT_LANGGYMI.replace("Langzeit", "Kurzzeit")
+def load_prompts() -> dict:
+    """Lädt alle Prompts aus scraper_registry (field_name='prompts').
+
+    Fällt auf HARDCODED_PROMPTS zurück, wenn Registry leer/ungültig.
+    Fehlende Keys werden aus HARDCODED_PROMPTS ergänzt.
+
+    Der kurzgymi-Prompt wird in main() aus dem langgymi-Prompt
+    abgeleitet (String-Replace 'Langzeit'→'Kurzzeit'). Damit pflegt
+    der Self-Healing-Loop nur EINE Variante.
+    """
+    registry_value = get_current_value(PROVIDER_ID, SCRAPER_METHOD, "prompts")
+    if registry_value:
+        try:
+            loaded = json.loads(registry_value)
+            merged = {**HARDCODED_PROMPTS, **loaded}
+            print(f"  ✓ {len(loaded)} Prompt(s) aus scraper_registry geladen")
+            return merged
+        except json.JSONDecodeError:
+            print("  ⚠ Registry-JSON ungültig — Fallback auf HARDCODED_PROMPTS")
+            return HARDCODED_PROMPTS
+    print("  ℹ Kein Registry-Eintrag — verwende HARDCODED_PROMPTS als Fallback")
+    return HARDCODED_PROMPTS
 
 
 def scrape_page(url: str, prompt: str) -> dict:
@@ -189,6 +232,12 @@ def main():
         print("  Abbruch: BFH LLM nicht erreichbar.")
         return
 
+    # ROUNDTRIP: Prompts aus scraper_registry laden (mit Fallback).
+    # Der kurzgymi-Prompt wird aus dem langgymi-Prompt abgeleitet, damit
+    # der Self-Healing-Loop nur EINE Variante pflegen muss.
+    active_prompts = load_prompts()
+    kurzgymi_prompt = active_prompts["langgymi"].replace("Langzeit", "Kurzzeit")
+
     with ScrapeRun(SCRAPER_METHOD, PROVIDER_ID) as run:
         metadata = {}
 
@@ -196,7 +245,7 @@ def main():
         for i, url in enumerate([OVERVIEW_URL, LANGGYMI_MAIN_URL, KURZGYMI_MAIN_URL], start=1):
             try:
                 print(f"\n  Schritt {i}: Metadaten von {url}")
-                r = scrape_page(url, PROMPT_OVERVIEW)
+                r = scrape_page(url, active_prompts["overview"])
                 meta = r.get("metadata", {}) or {}
                 if meta:
                     metadata = merge_metadata(metadata, meta)
@@ -213,7 +262,7 @@ def main():
         langgymi_courses = []
         try:
             print(f"\n  Schritt 4: Langgymi-Kurse")
-            r = scrape_page(LANGGYMI_URL, PROMPT_LANGGYMI)
+            r = scrape_page(LANGGYMI_URL, active_prompts["langgymi"])
             price_chf     = parse_price(r.get("price_chf")) or 2450
             price_online  = parse_price(r.get("price_online_chf")) or 2250
             start_kw_lang = r.get("start_kw")
@@ -228,11 +277,11 @@ def main():
             log_scrape_error(run.id, PROVIDER_ID, "SCRAPING_ERROR", f"Langgymi: {e}")
             run.error_count += 1
 
-        # Schritt 5: Kurzgymi-Kurse
+        # Schritt 5: Kurzgymi-Kurse (Prompt abgeleitet aus active_prompts['langgymi'])
         kurzgymi_courses = []
         try:
             print(f"\n  Schritt 5: Kurzgymi-Kurse")
-            r = scrape_page(KURZGYMI_URL, PROMPT_KURZGYMI)
+            r = scrape_page(KURZGYMI_URL, kurzgymi_prompt)
             start_kw_kurz = r.get("start_kw") or start_kw_lang
             end_kw_kurz   = r.get("end_kw")   or end_kw_lang
             kurzgymi_courses = transform_courses(

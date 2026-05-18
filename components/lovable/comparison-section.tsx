@@ -3,7 +3,7 @@ import {useEffect, useMemo, useState, useTransition} from 'react';
 import {LayoutGrid, List as ListIcon} from 'lucide-react';
 import {useRouter, useSearchParams, usePathname} from 'next/navigation';
 import {useTranslations} from 'next-intl';
-import type {Provider} from '@/lib/mock-providers';
+import type {Provider} from '@/lib/provider-types';
 import {ProviderCard} from './provider-card';
 import {ProviderSheet} from './provider-sheet';
 import {formatCHF} from '@/lib/format';

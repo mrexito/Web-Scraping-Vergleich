@@ -1,13 +1,25 @@
 """
-sGAI_nachhilfeAkademieScraper.py (NATIV ScrapeGraphAI)
-==============================================
+sGAI_nachhilfeAkademieScraper.py (NATIV ScrapeGraphAI + Self-Healing Roundtrip)
+================================================================================
 ScrapeGraphAI-Scraper für Nachhilfe Akademie.
 Scrapt 3 Seiten: Übersicht (Kurse + Metadaten) + 2 Preisseiten
 (Langgymi, Kurzgymi). Nutzt nativ SmartScraperGraph mit graph_config
 chunk_size=4000 aus scrape_utils.
+
+SELF-HEALING ROUNDTRIP:
+-----------------------
+Liest beim Start aus scraper_registry (field_name='prompts'):
+  - 'overview' → Kurse + Anbieter-Metadaten
+  - 'preise_lang' → Langgymi-Preise
+Der kurzgymi-Preise-Prompt wird aus dem langgymi-Preise-Prompt
+abgeleitet (String-Replace 'Langgymnasium'→'Kurzgymnasium'). Damit pflegt
+der Self-Healing-Loop nur EINE Variante.
+Fallback: HARDCODED_PROMPTS.
 """
 
 import json
+import os
+import sys
 import time
 from scrapegraphai.graphs import SmartScraperGraph
 
@@ -23,6 +35,14 @@ from scrape_utils import (
     ScrapeRun,
 )
 
+# Registry-Helpers verfügbar machen
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+_HEALING_DIR = os.path.normpath(os.path.join(_THIS_DIR, "..", "self-healing"))
+if _HEALING_DIR not in sys.path:
+    sys.path.insert(0, _HEALING_DIR)
+
+from registry_helpers import get_current_value  # noqa: E402
+
 
 SCRAPER_METHOD     = "scrapegraphai"
 PROVIDER_ID        = 6
@@ -35,7 +55,8 @@ PREISE_KURZ_URL    = f"{BASE_URL}/preise-gymivorbereitung-kurzgymnasium/"
 
 
 
-PROMPT_OVERVIEW = """
+HARDCODED_PROMPTS = {
+    "overview": """
 Du bist ein Datenextraktions-Assistent für eine Vergleichsplattform von Gymi-Vorbereitungskursen.
 
 Extrahiere ALLE Kurse (Langzeit- und Kurzzeitgymnasium, schulbegleitend und Ferienkurse)
@@ -61,9 +82,8 @@ Extrahiere zusätzlich Anbieter-Metadaten:
 - standorte: Liste aller Standorte
 
 Antworte NUR mit reinem JSON: {"courses": [...], "metadata": {...}}
-"""
-
-PROMPT_PREISE_LANG = """
+""",
+    "preise_lang": """
 Extrahiere die Preise für Gymivorbereitungskurse Langgymnasium.
 
 Gib zurück:
@@ -75,9 +95,32 @@ Gib zurück:
 - anmeldegebuehr: Anmeldegebühr als Zahl in CHF
 
 Antworte NUR mit reinem JSON: {"preise": {...}}
-"""
+""",
+}
 
-PROMPT_PREISE_KURZ = PROMPT_PREISE_LANG.replace("Langgymnasium", "Kurzgymnasium")
+
+def load_prompts() -> dict:
+    """Lädt alle Prompts aus scraper_registry (field_name='prompts').
+
+    Fällt auf HARDCODED_PROMPTS zurück, wenn Registry leer/ungültig.
+    Fehlende Keys werden aus HARDCODED_PROMPTS ergänzt.
+
+    Der preise_kurz-Prompt wird in main() aus dem preise_lang-Prompt
+    abgeleitet (String-Replace 'Langgymnasium'→'Kurzgymnasium'). Damit
+    pflegt der Self-Healing-Loop nur EINE Preise-Variante.
+    """
+    registry_value = get_current_value(PROVIDER_ID, SCRAPER_METHOD, "prompts")
+    if registry_value:
+        try:
+            loaded = json.loads(registry_value)
+            merged = {**HARDCODED_PROMPTS, **loaded}
+            print(f"  ✓ {len(loaded)} Prompt(s) aus scraper_registry geladen")
+            return merged
+        except json.JSONDecodeError:
+            print("  ⚠ Registry-JSON ungültig — Fallback auf HARDCODED_PROMPTS")
+            return HARDCODED_PROMPTS
+    print("  ℹ Kein Registry-Eintrag — verwende HARDCODED_PROMPTS als Fallback")
+    return HARDCODED_PROMPTS
 
 
 def scrape_page(url: str, prompt: str) -> dict:
@@ -180,6 +223,11 @@ def main():
         print("  Abbruch: BFH LLM nicht erreichbar.")
         return
 
+    # ROUNDTRIP: Prompts aus scraper_registry laden (mit Fallback).
+    # Der preise_kurz-Prompt wird aus dem preise_lang-Prompt abgeleitet.
+    active_prompts = load_prompts()
+    preise_kurz_prompt = active_prompts["preise_lang"].replace("Langgymnasium", "Kurzgymnasium")
+
     with ScrapeRun(SCRAPER_METHOD, PROVIDER_ID) as run:
         metadata    = {}
         raw_courses = []
@@ -189,7 +237,7 @@ def main():
         # Schritt 1: Übersicht
         try:
             print(f"\n  Schritt 1: Übersichtsseite")
-            overview_result = scrape_page(OVERVIEW_URL, PROMPT_OVERVIEW)
+            overview_result = scrape_page(OVERVIEW_URL, active_prompts["overview"])
             metadata = overview_result.get("metadata", {}) or {}
             raw_courses = overview_result.get("courses", []) or []
             print(f"  → {len(raw_courses)} Kurse gefunden")
@@ -201,17 +249,17 @@ def main():
         # Schritt 2: Preise Langgymi
         try:
             print(f"\n  Schritt 2: Preise Langgymi")
-            preise_lang = (scrape_page(PREISE_LANG_URL, PROMPT_PREISE_LANG).get("preise") or {})
+            preise_lang = (scrape_page(PREISE_LANG_URL, active_prompts["preise_lang"]).get("preise") or {})
             time.sleep(2)
         except Exception as e:
             log_scrape_error(run.id, PROVIDER_ID, "SCRAPING_ERROR",
                              f"Preise Langgymi: {e}")
             run.error_count += 1
 
-        # Schritt 3: Preise Kurzgymi
+        # Schritt 3: Preise Kurzgymi (Prompt abgeleitet)
         try:
             print(f"\n  Schritt 3: Preise Kurzgymi")
-            preise_kurz = (scrape_page(PREISE_KURZ_URL, PROMPT_PREISE_KURZ).get("preise") or {})
+            preise_kurz = (scrape_page(PREISE_KURZ_URL, preise_kurz_prompt).get("preise") or {})
         except Exception as e:
             log_scrape_error(run.id, PROVIDER_ID, "SCRAPING_ERROR",
                              f"Preise Kurzgymi: {e}")

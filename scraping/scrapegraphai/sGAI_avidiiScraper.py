@@ -1,11 +1,26 @@
 """
-sGAI_avidiiScraper.py (refactored)
-===================================
+sGAI_avidiiScraper.py (refactored + Self-Healing Roundtrip)
+============================================================
 ScrapeGraphAI-Scraper für Avidii.
 Nutzt scrape_utils.py für gemeinsame Funktionen und Logging.
+
+SELF-HEALING ROUNDTRIP (exemplarisch implementiert):
+----------------------------------------------------
+Dieser Scraper demonstriert den geschlossenen Self-Healing-Loop:
+  1. Der Self-Healing-Loop schreibt einen verbesserten Prompt in die
+     Tabelle `scraper_registry` (field_name = 'main_prompt').
+  2. Beim nächsten Lauf liest dieser Scraper den AKTUELLEN Prompt aus
+     der Registry — KEINE Code-Änderung nötig.
+  3. Falls die Registry leer/nicht erreichbar ist, fällt der Scraper
+     auf den hier definierten HARDCODED_PROMPT zurück.
+
+Für die anderen 11 SGAI-Scraper ist dies als Future Work skizziert
+(siehe Thesis Kapitel "Self-Healing Architektur").
 """
 
 import json
+import os
+import sys
 import time
 from scrapegraphai.graphs import SmartScraperGraph
 
@@ -20,6 +35,14 @@ from scrape_utils import (
     log_scrape_error,
     ScrapeRun,
 )
+
+# Registry-Helpers aus self-healing/ verfügbar machen
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+_HEALING_DIR = os.path.normpath(os.path.join(_THIS_DIR, "..", "self-healing"))
+if _HEALING_DIR not in sys.path:
+    sys.path.insert(0, _HEALING_DIR)
+
+from registry_helpers import get_current_value  # noqa: E402
 
 
 # =====================================================================
@@ -43,7 +66,12 @@ URLS = [
 ]
 
 
-PROMPT = """
+# =====================================================================
+# PROMPT — FALLBACK + REGISTRY-ROUNDTRIP
+# =====================================================================
+# HARDCODED_PROMPT ist die ursprüngliche Variante; sie dient als Fallback,
+# falls die scraper_registry keinen Eintrag enthält oder nicht erreichbar ist.
+HARDCODED_PROMPT = """
 Du bist ein Datenextraktions-Assistent. Extrahiere alle Kurszeilen aus dieser Webseite.
 
 Für jeden Kurs gib folgende Felder zurück:
@@ -74,6 +102,25 @@ Antworte NUR mit einem JSON-Objekt mit den Feldern "courses" (Liste) und "metada
 """
 
 
+def load_prompt() -> str:
+    """Lädt den aktuellen Prompt aus scraper_registry.
+
+    Reihenfolge:
+      1. Registry-Eintrag (field_name = 'main_prompt') versuchen.
+      2. Falls leer / Fehler: HARDCODED_PROMPT als Fallback.
+
+    Damit ist der Self-Healing-Roundtrip geschlossen: Der Loop schreibt
+    in die Registry, dieser Scraper liest beim nächsten Aufruf.
+    """
+    registry_value = get_current_value(PROVIDER_ID, SCRAPER_METHOD, "main_prompt")
+    if registry_value:
+        print(f"  ✓ Prompt aus scraper_registry geladen ({len(registry_value)} Zeichen)")
+        return registry_value
+
+    print("  ℹ Kein Registry-Eintrag — verwende HARDCODED_PROMPT als Fallback")
+    return HARDCODED_PROMPT
+
+
 # =====================================================================
 # SCRAPING-HELFER
 # =====================================================================
@@ -90,13 +137,13 @@ def clean_availability(raw: str):
     return None
 
 
-def scrape_courses(entry: dict) -> dict:
+def scrape_courses(entry: dict, prompt: str) -> dict:
     """Scrapt die Seite mit ScrapeGraphAI + BFH LLM."""
     print(f"\n  ScrapeGraphAI scrapt: {entry['url']} ({entry['course_type']})")
 
     try:
         scraper = SmartScraperGraph(
-            prompt=PROMPT,
+            prompt=prompt,
             source=entry["url"],
             config=graph_config,
         )
@@ -223,13 +270,16 @@ def main():
         print("  Abbruch: BFH LLM nicht erreichbar. VPN aktiv? API-Key korrekt?")
         return
 
+    # ROUNDTRIP: Prompt aus scraper_registry laden (mit Fallback)
+    active_prompt = load_prompt()
+
     with ScrapeRun(SCRAPER_METHOD, PROVIDER_ID) as run:
         all_courses    = []
         last_metadata  = {}
 
         for entry in URLS:
             try:
-                result  = scrape_courses(entry)
+                result  = scrape_courses(entry, active_prompt)
                 if not last_metadata:
                     last_metadata = result.get("metadata", {}) or {}
                 courses = transform_courses(result, entry)

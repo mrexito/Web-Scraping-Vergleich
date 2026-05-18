@@ -1,6 +1,6 @@
 """
-sGAI_lernForumScraper.py
-=========================
+sGAI_lernForumScraper.py (+ Self-Healing Roundtrip)
+====================================================
 ScrapeGraphAI-Scraper für Lern-Forum.ch (Provider 2).
 
 Nutzt nativ SmartScraperGraph aus ScrapeGraphAI mit Provider-spezifischer
@@ -13,9 +13,16 @@ Scrapt drei Seiten:
   1. Hauptseite: Anbieter-Metadaten
   2. Langgymnasium-Seite: Langgymi-Kurstermine
   3. Kurzgymnasium-Seite: Kurzgymi-Kurstermine
+
+SELF-HEALING ROUNDTRIP:
+-----------------------
+Liest beim Start zwei Prompts aus scraper_registry (field_name='prompts',
+Keys 'meta' + 'courses'). Fallback: HARDCODED_PROMPTS.
 """
 
 import json
+import os
+import sys
 import time
 from scrapegraphai.graphs import SmartScraperGraph
 
@@ -30,6 +37,14 @@ from scrape_utils import (
     log_scrape_error,
     ScrapeRun,
 )
+
+# Registry-Helpers verfügbar machen
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+_HEALING_DIR = os.path.normpath(os.path.join(_THIS_DIR, "..", "self-healing"))
+if _HEALING_DIR not in sys.path:
+    sys.path.insert(0, _HEALING_DIR)
+
+from registry_helpers import get_current_value  # noqa: E402
 
 
 SCRAPER_METHOD = "scrapegraphai"
@@ -57,28 +72,49 @@ def convert_date(raw):
     return result
 
 
-PROMPT_META = (
-    "Du bist ein Datenextraktions-Assistent. Extrahiere NUR Metadaten:\n"
-    "- aufsatzkorrektur, einstufungstest, e_learning, pruefungsarchiv, beratungsgespraech, "
-    "lernunterlagen, pruefungssimulation, einzelkurse, unterstuetzung_ausserhalb (alle als bool)\n"
-    "- unterstuetzung_ausserhalb: true wenn Nachholoptionen, Aufholstunden, Hausaufgabenbetreuung, "
-    "Wiederholung verpasster Lektionen oder Unterstützung ausserhalb der Unterrichtszeiten "
-    "angeboten wird\n"
-    "- max_teilnehmer: Zahl\n"
-    "- standorte: Liste\n"
-    'Antworte NUR mit reinem JSON: {"metadata": {...}}'
-)
+HARDCODED_PROMPTS = {
+    "meta": (
+        "Du bist ein Datenextraktions-Assistent. Extrahiere NUR Metadaten:\n"
+        "- aufsatzkorrektur, einstufungstest, e_learning, pruefungsarchiv, beratungsgespraech, "
+        "lernunterlagen, pruefungssimulation, einzelkurse, unterstuetzung_ausserhalb (alle als bool)\n"
+        "- unterstuetzung_ausserhalb: true wenn Nachholoptionen, Aufholstunden, Hausaufgabenbetreuung, "
+        "Wiederholung verpasster Lektionen oder Unterstützung ausserhalb der Unterrichtszeiten "
+        "angeboten wird\n"
+        "- max_teilnehmer: Zahl\n"
+        "- standorte: Liste\n"
+        'Antworte NUR mit reinem JSON: {"metadata": {...}}'
+    ),
+    # Kein Kurstyp-Filter im Prompt — der Kurstyp wird via URL bestimmt
+    # (Single Source of Truth = URL, nicht das LLM-Urteil).
+    "courses": (
+        "Extrahiere ALLE Kurstermine von dieser Seite. Antworte auf Deutsch.\n"
+        "Für jeden Kurs: title (Deutsch), weekday (deutscher Wochentag: Montag/Dienstag/Mittwoch/"
+        "Donnerstag/Freitag/Samstag/Sonntag), course_time, location, "
+        "start_date (TT.MM.JJJJ), end_date, price_chf (Zahl), "
+        "availability (ausgebucht/viele), is_online (bool).\n"
+        'Antworte NUR mit reinem JSON: {"courses": [...]}'
+    ),
+}
 
-# Kein Kurstyp-Filter im Prompt — der Kurstyp wird via URL bestimmt
-# (Single Source of Truth = URL, nicht das LLM-Urteil).
-PROMPT_COURSES = (
-    "Extrahiere ALLE Kurstermine von dieser Seite. Antworte auf Deutsch.\n"
-    "Für jeden Kurs: title (Deutsch), weekday (deutscher Wochentag: Montag/Dienstag/Mittwoch/"
-    "Donnerstag/Freitag/Samstag/Sonntag), course_time, location, "
-    "start_date (TT.MM.JJJJ), end_date, price_chf (Zahl), "
-    "availability (ausgebucht/viele), is_online (bool).\n"
-    'Antworte NUR mit reinem JSON: {"courses": [...]}'
-)
+
+def load_prompts() -> dict:
+    """Lädt alle Prompts aus scraper_registry (field_name='prompts').
+
+    Fällt auf HARDCODED_PROMPTS zurück, wenn Registry leer/ungültig.
+    Fehlende Keys werden aus HARDCODED_PROMPTS ergänzt.
+    """
+    registry_value = get_current_value(PROVIDER_ID, SCRAPER_METHOD, "prompts")
+    if registry_value:
+        try:
+            loaded = json.loads(registry_value)
+            merged = {**HARDCODED_PROMPTS, **loaded}
+            print(f"  ✓ {len(loaded)} Prompt(s) aus scraper_registry geladen")
+            return merged
+        except json.JSONDecodeError:
+            print("  ⚠ Registry-JSON ungültig — Fallback auf HARDCODED_PROMPTS")
+            return HARDCODED_PROMPTS
+    print("  ℹ Kein Registry-Eintrag — verwende HARDCODED_PROMPTS als Fallback")
+    return HARDCODED_PROMPTS
 
 
 def scrape_page(url: str, prompt: str) -> dict:
@@ -199,13 +235,16 @@ def main():
         print("  Abbruch: BFH LLM nicht erreichbar.")
         return
 
+    # ROUNDTRIP: Prompts aus scraper_registry laden (mit Fallback)
+    active_prompts = load_prompts()
+
     with ScrapeRun(SCRAPER_METHOD, PROVIDER_ID) as run:
         metadata = {}
         all_courses = []
 
         try:
             print(f"\n  Schritt 1: Metadaten")
-            r = scrape_page(MAIN_URL, PROMPT_META)
+            r = scrape_page(MAIN_URL, active_prompts["meta"])
             metadata = r.get("metadata", {}) or {}
             time.sleep(2)
         except Exception as e:
@@ -214,7 +253,7 @@ def main():
 
         try:
             print(f"\n  Schritt 2: Langgymnasium")
-            r = scrape_page(LANGGYMI_URL, PROMPT_COURSES)
+            r = scrape_page(LANGGYMI_URL, active_prompts["courses"])
             lang = transform_courses(r.get("courses", []), "langgymi")
             all_courses.extend(lang)
             print(f"  → {len(lang)} Langgymi-Kurse")
@@ -225,7 +264,7 @@ def main():
 
         try:
             print(f"\n  Schritt 3: Kurzgymnasium")
-            r = scrape_page(KURZGYMI_URL, PROMPT_COURSES)
+            r = scrape_page(KURZGYMI_URL, active_prompts["courses"])
             kurz = transform_courses(r.get("courses", []), "kurzgymi")
             all_courses.extend(kurz)
             print(f"  → {len(kurz)} Kurzgymi-Kurse")

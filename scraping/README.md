@@ -15,7 +15,7 @@ The thesis evaluates the three frameworks across:
 
 | Criterion | Puppeteer | ScrapeGraphAI | Bright Data |
 | --- | --- | --- | --- |
-| Provider coverage | 5 of 12 | 12 of 12 | 2 of 12 |
+| Provider coverage | 5 of 12 | 12 of 12 | 5 of 12 |
 | Language | TypeScript | Python | Python |
 | Approach | DOM selectors | LLM-driven | Managed proxies |
 | Resilience | Manual selector fixes | Self-healing via LLM | Provider-side |

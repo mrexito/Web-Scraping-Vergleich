@@ -1,11 +1,18 @@
 """
-sGAI_lernTerrasseScraper.py (refactored)
-=========================================
+sGAI_lernTerrasseScraper.py (refactored + Self-Healing Roundtrip)
+==================================================================
 ScrapeGraphAI-Scraper für Lernterrasse.
 Scrapt 4 Seiten (verschiedene Schulstufen) mit gleichem Prompt.
+
+SELF-HEALING ROUNDTRIP:
+-----------------------
+Liest beim Start den Prompt aus scraper_registry (field_name='prompts',
+Key 'main'). Fallback: HARDCODED_PROMPTS['main'].
 """
 
 import json
+import os
+import sys
 import time
 from scrapegraphai.graphs import SmartScraperGraph
 
@@ -20,6 +27,14 @@ from scrape_utils import (
     log_scrape_error,
     ScrapeRun,
 )
+
+# Registry-Helpers verfügbar machen
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+_HEALING_DIR = os.path.normpath(os.path.join(_THIS_DIR, "..", "self-healing"))
+if _HEALING_DIR not in sys.path:
+    sys.path.insert(0, _HEALING_DIR)
+
+from registry_helpers import get_current_value  # noqa: E402
 
 
 SCRAPER_METHOD = "scrapegraphai"
@@ -39,7 +54,8 @@ URLS = [
 ]
 
 
-PROMPT = """
+HARDCODED_PROMPTS = {
+    "main": """
 Du bist ein Datenextraktions-Assistent. Extrahiere alle Kurszeilen aus den Tabellen.
 
 Jede Tabelle hat Spalten: Kurs, Stufe, Kurstag, Beginn am, Preis (Fr.), Anmeldung.
@@ -64,7 +80,31 @@ Einmalig Anbieter-Metadaten:
 - max_teilnehmer: Zahl
 
 Antworte NUR mit reinem JSON: {"courses": [...], "metadata": {...}}
-"""
+""",
+}
+
+
+def load_prompts() -> dict:
+    """Lädt alle Prompts aus scraper_registry (field_name='prompts').
+
+    Fällt auf HARDCODED_PROMPTS zurück, wenn die Registry leer oder
+    ungültiges JSON enthält. Stellt sicher, dass alle erwarteten Keys
+    aus HARDCODED_PROMPTS vorhanden sind (fehlende Keys werden ergänzt).
+    """
+    registry_value = get_current_value(PROVIDER_ID, SCRAPER_METHOD, "prompts")
+    if registry_value:
+        try:
+            loaded = json.loads(registry_value)
+            # Merge: Registry-Werte überschreiben Defaults; fehlende Keys
+            # werden aus HARDCODED_PROMPTS ergänzt.
+            merged = {**HARDCODED_PROMPTS, **loaded}
+            print(f"  ✓ {len(loaded)} Prompt(s) aus scraper_registry geladen")
+            return merged
+        except json.JSONDecodeError:
+            print("  ⚠ Registry-JSON ungültig — Fallback auf HARDCODED_PROMPTS")
+            return HARDCODED_PROMPTS
+    print("  ℹ Kein Registry-Eintrag — verwende HARDCODED_PROMPTS als Fallback")
+    return HARDCODED_PROMPTS
 
 
 def clean_availability(raw: str):
@@ -78,10 +118,10 @@ def clean_availability(raw: str):
     return "viele"
 
 
-def scrape_page(entry: dict) -> dict:
+def scrape_page(entry: dict, prompt: str) -> dict:
     print(f"\n  Scrapt: {entry['url']} ({entry['course_type']}, {entry['stufe']})")
     try:
-        scraper = SmartScraperGraph(prompt=PROMPT, source=entry["url"], config=graph_config)
+        scraper = SmartScraperGraph(prompt=prompt, source=entry["url"], config=graph_config)
         result = scraper.run()
     except Exception as e:
         extracted = extract_json_from_string(str(e))
@@ -171,13 +211,16 @@ def main():
         print("  Abbruch: BFH LLM nicht erreichbar.")
         return
 
+    # ROUNDTRIP: Prompts aus scraper_registry laden (mit Fallback)
+    active_prompts = load_prompts()
+
     with ScrapeRun(SCRAPER_METHOD, PROVIDER_ID) as run:
         all_courses = []
         last_metadata = {}
 
         for entry in URLS:
             try:
-                result = scrape_page(entry)
+                result = scrape_page(entry, active_prompts["main"])
                 if not last_metadata and result.get("metadata"):
                     last_metadata = result["metadata"]
                 all_courses.extend(transform_courses(result, entry))

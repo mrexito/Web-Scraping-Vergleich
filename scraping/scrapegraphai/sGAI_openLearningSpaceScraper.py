@@ -1,11 +1,20 @@
 """
-sGAI_openLearningSpaceScraper.py (refactored)
-==============================================
+sGAI_openLearningSpaceScraper.py (refactored + Self-Healing Roundtrip)
+========================================================================
 ScrapeGraphAI-Scraper für Open Learning Space (OLS Zürich).
 Scrapt 3 Seiten: Übersicht + Langgymi-Unterseite + Kurzgymi-Unterseite, dedupliziert.
+
+SELF-HEALING ROUNDTRIP:
+-----------------------
+Liest beim Start aus scraper_registry (field_name='prompts'):
+  - 'overview'  → Übersichtsseite (Kurse + Metadaten)
+  - 'kursseite' → Detail-Kursseiten (Langgymi und Kurzgymi nutzen denselben Prompt)
+Fallback: HARDCODED_PROMPTS.
 """
 
 import json
+import os
+import sys
 import time
 from scrapegraphai.graphs import SmartScraperGraph
 
@@ -22,6 +31,14 @@ from scrape_utils import (
     ScrapeRun,
 )
 
+# Registry-Helpers verfügbar machen
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+_HEALING_DIR = os.path.normpath(os.path.join(_THIS_DIR, "..", "self-healing"))
+if _HEALING_DIR not in sys.path:
+    sys.path.insert(0, _HEALING_DIR)
+
+from registry_helpers import get_current_value  # noqa: E402
+
 
 SCRAPER_METHOD = "scrapegraphai"
 PROVIDER_ID    = 8
@@ -36,7 +53,8 @@ URLS = [
 ]
 
 
-PROMPT_OVERVIEW = """
+HARDCODED_PROMPTS = {
+    "overview": """
 Du bist ein Datenextraktions-Assistent für eine Vergleichsplattform von Gymi-Vorbereitungskursen.
 
 Extrahiere ALLE Kurse (Langzeit- und Kurzzeitgymnasium) von dieser Seite.
@@ -60,9 +78,8 @@ Extrahiere zusätzlich Anbieter-Metadaten:
 - standorte: Liste aller Standorte
 
 Antworte NUR mit reinem JSON: {"courses": [...], "metadata": {...}}
-"""
-
-PROMPT_KURSSEITE = """
+""",
+    "kursseite": """
 Du bist ein Datenextraktions-Assistent. Extrahiere alle Kurse von dieser Seite.
 
 Für jeden Kurs gib zurück:
@@ -79,7 +96,28 @@ Für jeden Kurs gib zurück:
 Extrahiere zusätzlich Metadaten (dieselben Felder wie in der Übersicht, inkl. unterstuetzung_ausserhalb).
 
 Antworte NUR mit reinem JSON: {"courses": [...], "metadata": {...}}
-"""
+""",
+}
+
+
+def load_prompts() -> dict:
+    """Lädt alle Prompts aus scraper_registry (field_name='prompts').
+
+    Fällt auf HARDCODED_PROMPTS zurück, wenn Registry leer/ungültig.
+    Fehlende Keys werden aus HARDCODED_PROMPTS ergänzt.
+    """
+    registry_value = get_current_value(PROVIDER_ID, SCRAPER_METHOD, "prompts")
+    if registry_value:
+        try:
+            loaded = json.loads(registry_value)
+            merged = {**HARDCODED_PROMPTS, **loaded}
+            print(f"  ✓ {len(loaded)} Prompt(s) aus scraper_registry geladen")
+            return merged
+        except json.JSONDecodeError:
+            print("  ⚠ Registry-JSON ungültig — Fallback auf HARDCODED_PROMPTS")
+            return HARDCODED_PROMPTS
+    print("  ℹ Kein Registry-Eintrag — verwende HARDCODED_PROMPTS als Fallback")
+    return HARDCODED_PROMPTS
 
 
 def scrape_page(url: str, prompt: str) -> dict:
@@ -190,6 +228,9 @@ def main():
         print("  Abbruch: BFH LLM nicht erreichbar.")
         return
 
+    # ROUNDTRIP: Prompts aus scraper_registry laden (mit Fallback)
+    active_prompts = load_prompts()
+
     with ScrapeRun(SCRAPER_METHOD, PROVIDER_ID) as run:
         all_courses = []
         metadata = {}
@@ -197,7 +238,7 @@ def main():
         # Schritt 1: Übersichtsseite
         try:
             print(f"\n  Schritt 1: Übersichtsseite")
-            overview_result = scrape_page(URLS[0]["url"], PROMPT_OVERVIEW)
+            overview_result = scrape_page(URLS[0]["url"], active_prompts["overview"])
             metadata = overview_result.get("metadata", {}) or {}
             overview_courses = transform_courses(overview_result.get("courses", []))
             all_courses.extend(overview_courses)
@@ -213,7 +254,7 @@ def main():
             fallback = entry["purpose"]
             try:
                 print(f"\n  Schritt {i}: {fallback}-Unterseite")
-                result = scrape_page(entry["url"], PROMPT_KURSSEITE)
+                result = scrape_page(entry["url"], active_prompts["kursseite"])
                 meta = result.get("metadata", {}) or {}
                 if meta:
                     metadata = merge_metadata(metadata, meta)

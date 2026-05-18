@@ -3,7 +3,7 @@ import {useEffect, useState} from 'react';
 import {useTranslations} from 'next-intl';
 import {ArrowRight, Calendar, MapPin, Wallet, Users, GitCompare, X, ArrowLeft, CheckCircle2, Circle, Clock, BookOpen, Star, ExternalLink, ChevronDown} from 'lucide-react';
 import {Link} from '@/i18n/navigation';
-import type {Provider} from '@/lib/mock-providers';
+import type {Provider} from '@/lib/provider-types';
 import {formatCHF} from '@/lib/format';
 import {cn} from '@/lib/utils';
 import {useCompareStore} from '@/stores/compareStore';

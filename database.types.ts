@@ -77,54 +77,6 @@ export type Database = {
           },
         ]
       }
-      CourseDetails_backup_20260422: {
-        Row: {
-          Beratungsgespraech: boolean | null
-          "Dauer der Kurse in Std. Kurzzeitkurs": number | null
-          "Dauer der Kurse in Wochen Langzeitkurs": number | null
-          "Eigene Lernunterlagen": boolean | null
-          ID: number | null
-          "info freien Plaetze?": boolean | null
-          "Kursart (Intensiv- oder Langzeitkurs)": string | null
-          Pruefungsarchiv: boolean | null
-          Qualitaetsbewertung: number | null
-          Spezielles: string | null
-          Standort: string | null
-          Unterrichttag: string | null
-          "Unterstuezung ausserhalb Unterrichtszeit": boolean | null
-        }
-        Insert: {
-          Beratungsgespraech?: boolean | null
-          "Dauer der Kurse in Std. Kurzzeitkurs"?: number | null
-          "Dauer der Kurse in Wochen Langzeitkurs"?: number | null
-          "Eigene Lernunterlagen"?: boolean | null
-          ID?: number | null
-          "info freien Plaetze?"?: boolean | null
-          "Kursart (Intensiv- oder Langzeitkurs)"?: string | null
-          Pruefungsarchiv?: boolean | null
-          Qualitaetsbewertung?: number | null
-          Spezielles?: string | null
-          Standort?: string | null
-          Unterrichttag?: string | null
-          "Unterstuezung ausserhalb Unterrichtszeit"?: boolean | null
-        }
-        Update: {
-          Beratungsgespraech?: boolean | null
-          "Dauer der Kurse in Std. Kurzzeitkurs"?: number | null
-          "Dauer der Kurse in Wochen Langzeitkurs"?: number | null
-          "Eigene Lernunterlagen"?: boolean | null
-          ID?: number | null
-          "info freien Plaetze?"?: boolean | null
-          "Kursart (Intensiv- oder Langzeitkurs)"?: string | null
-          Pruefungsarchiv?: boolean | null
-          Qualitaetsbewertung?: number | null
-          Spezielles?: string | null
-          Standort?: string | null
-          Unterrichttag?: string | null
-          "Unterstuezung ausserhalb Unterrichtszeit"?: boolean | null
-        }
-        Relationships: []
-      }
       courses: {
         Row: {
           course_time: string | null
@@ -209,75 +161,6 @@ export type Database = {
           },
         ]
       }
-      courses_backup_20260422: {
-        Row: {
-          course_time: string | null
-          course_type: string | null
-          course_url: string | null
-          discount_valid_until: string | null
-          duration_weeks: number | null
-          end_date: string | null
-          has_digital_material: boolean | null
-          id: string | null
-          is_online: boolean | null
-          last_scraped_at: string | null
-          location: string | null
-          occurrence: string | null
-          price_chf: number | null
-          price_regular_chf: number | null
-          provider_id: number | null
-          scraped_data_raw: Json | null
-          scraper_method: string | null
-          start_date: string | null
-          title: string | null
-          verfuegbarkeit: string | null
-        }
-        Insert: {
-          course_time?: string | null
-          course_type?: string | null
-          course_url?: string | null
-          discount_valid_until?: string | null
-          duration_weeks?: number | null
-          end_date?: string | null
-          has_digital_material?: boolean | null
-          id?: string | null
-          is_online?: boolean | null
-          last_scraped_at?: string | null
-          location?: string | null
-          occurrence?: string | null
-          price_chf?: number | null
-          price_regular_chf?: number | null
-          provider_id?: number | null
-          scraped_data_raw?: Json | null
-          scraper_method?: string | null
-          start_date?: string | null
-          title?: string | null
-          verfuegbarkeit?: string | null
-        }
-        Update: {
-          course_time?: string | null
-          course_type?: string | null
-          course_url?: string | null
-          discount_valid_until?: string | null
-          duration_weeks?: number | null
-          end_date?: string | null
-          has_digital_material?: boolean | null
-          id?: string | null
-          is_online?: boolean | null
-          last_scraped_at?: string | null
-          location?: string | null
-          occurrence?: string | null
-          price_chf?: number | null
-          price_regular_chf?: number | null
-          provider_id?: number | null
-          scraped_data_raw?: Json | null
-          scraper_method?: string | null
-          start_date?: string | null
-          title?: string | null
-          verfuegbarkeit?: string | null
-        }
-        Relationships: []
-      }
       GymiProviders: {
         Row: {
           Aufsatzkorrektur: boolean
@@ -323,51 +206,6 @@ export type Database = {
         }
         Relationships: []
       }
-      GymiProviders_backup_20260422: {
-        Row: {
-          Aufsatzkorrektur: boolean | null
-          "E-Learning": boolean | null
-          Einstufungstest: boolean | null
-          Einzelkurse: boolean | null
-          ID: number | null
-          "Maximale Anzahl der Teilnehmer": string | null
-          Name: string | null
-          Onlinepruefung: boolean | null
-          "Preis Intensiver Kurs": number | null
-          "Preis Langzeit Kurs": number | null
-          Pruefungssimultaion: boolean | null
-          URL: string[] | null
-        }
-        Insert: {
-          Aufsatzkorrektur?: boolean | null
-          "E-Learning"?: boolean | null
-          Einstufungstest?: boolean | null
-          Einzelkurse?: boolean | null
-          ID?: number | null
-          "Maximale Anzahl der Teilnehmer"?: string | null
-          Name?: string | null
-          Onlinepruefung?: boolean | null
-          "Preis Intensiver Kurs"?: number | null
-          "Preis Langzeit Kurs"?: number | null
-          Pruefungssimultaion?: boolean | null
-          URL?: string[] | null
-        }
-        Update: {
-          Aufsatzkorrektur?: boolean | null
-          "E-Learning"?: boolean | null
-          Einstufungstest?: boolean | null
-          Einzelkurse?: boolean | null
-          ID?: number | null
-          "Maximale Anzahl der Teilnehmer"?: string | null
-          Name?: string | null
-          Onlinepruefung?: boolean | null
-          "Preis Intensiver Kurs"?: number | null
-          "Preis Langzeit Kurs"?: number | null
-          Pruefungssimultaion?: boolean | null
-          URL?: string[] | null
-        }
-        Relationships: []
-      }
       price_history: {
         Row: {
           course_type: string
@@ -406,60 +244,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }
-      price_history_backup_20260422: {
-        Row: {
-          course_type: string | null
-          id: string | null
-          price_chf: number | null
-          provider_id: number | null
-          recorded_at: string | null
-        }
-        Insert: {
-          course_type?: string | null
-          id?: string | null
-          price_chf?: number | null
-          provider_id?: number | null
-          recorded_at?: string | null
-        }
-        Update: {
-          course_type?: string | null
-          id?: string | null
-          price_chf?: number | null
-          provider_id?: number | null
-          recorded_at?: string | null
-        }
-        Relationships: []
-      }
-      providers_backup_20260422: {
-        Row: {
-          created_at: string | null
-          id: number | null
-          logo_url: string | null
-          name: string | null
-          official_name: string | null
-          updated_at: string | null
-          website: string | null
-        }
-        Insert: {
-          created_at?: string | null
-          id?: number | null
-          logo_url?: string | null
-          name?: string | null
-          official_name?: string | null
-          updated_at?: string | null
-          website?: string | null
-        }
-        Update: {
-          created_at?: string | null
-          id?: number | null
-          logo_url?: string | null
-          name?: string | null
-          official_name?: string | null
-          updated_at?: string | null
-          website?: string | null
-        }
-        Relationships: []
       }
       scrape_errors: {
         Row: {
@@ -522,45 +306,6 @@ export type Database = {
           },
         ]
       }
-      scrape_errors_backup_20260422: {
-        Row: {
-          ai_suggested_selector: string | null
-          created_at: string | null
-          error_type: string | null
-          fixed_at: string | null
-          fixed_by_ai: boolean | null
-          html_snapshot: string | null
-          id: string | null
-          message: string | null
-          provider_id: number | null
-          run_id: string | null
-        }
-        Insert: {
-          ai_suggested_selector?: string | null
-          created_at?: string | null
-          error_type?: string | null
-          fixed_at?: string | null
-          fixed_by_ai?: boolean | null
-          html_snapshot?: string | null
-          id?: string | null
-          message?: string | null
-          provider_id?: number | null
-          run_id?: string | null
-        }
-        Update: {
-          ai_suggested_selector?: string | null
-          created_at?: string | null
-          error_type?: string | null
-          fixed_at?: string | null
-          fixed_by_ai?: boolean | null
-          html_snapshot?: string | null
-          id?: string | null
-          message?: string | null
-          provider_id?: number | null
-          run_id?: string | null
-        }
-        Relationships: []
-      }
       scrape_runs: {
         Row: {
           courses_found: number | null
@@ -608,30 +353,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }
-      scrape_runs_backup_20260422: {
-        Row: {
-          finished_at: string | null
-          id: string | null
-          scraper_type: string | null
-          started_at: string | null
-          status: string | null
-        }
-        Insert: {
-          finished_at?: string | null
-          id?: string | null
-          scraper_type?: string | null
-          started_at?: string | null
-          status?: string | null
-        }
-        Update: {
-          finished_at?: string | null
-          id?: string | null
-          scraper_type?: string | null
-          started_at?: string | null
-          status?: string | null
-        }
-        Relationships: []
       }
       scraper_registry: {
         Row: {

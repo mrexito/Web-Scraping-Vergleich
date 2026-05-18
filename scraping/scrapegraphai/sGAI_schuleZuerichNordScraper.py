@@ -1,12 +1,23 @@
 """
-sGAI_schuleZuerichNordScraper.py (refactored)
-==============================================
+sGAI_schuleZuerichNordScraper.py (refactored + Self-Healing Roundtrip)
+========================================================================
 ScrapeGraphAI-Scraper für Schule Zürich Nord.
 Besonderheit: HTML via ScrapeGraphAI + 2 PDFs via pypdf + direktem BFH-LLM-Call.
+
+SELF-HEALING ROUNDTRIP:
+-----------------------
+Liest beim Start aus scraper_registry (field_name='prompts'):
+  - 'overview'    → Anbieter-Metadaten (HTML)
+  - 'pdf_langgymi' → Langgymi-Kurse (PDF-Inhalt → BFH LLM)
+  - 'pdf_kurzgymi' → Kurzgymi-Kurse (PDF-Inhalt → BFH LLM)
+Alle 3 Prompts sind eigenständig (PDF-Strukturen unterscheiden sich).
+Fallback: HARDCODED_PROMPTS.
 """
 
 import json
 import io
+import os
+import sys
 import time
 import requests
 from pypdf import PdfReader
@@ -29,6 +40,14 @@ from scrape_utils import (
     ScrapeRun,
 )
 
+# Registry-Helpers verfügbar machen
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+_HEALING_DIR = os.path.normpath(os.path.join(_THIS_DIR, "..", "self-healing"))
+if _HEALING_DIR not in sys.path:
+    sys.path.insert(0, _HEALING_DIR)
+
+from registry_helpers import get_current_value  # noqa: E402
+
 
 SCRAPER_METHOD = "scrapegraphai"
 PROVIDER_ID    = 7
@@ -41,7 +60,8 @@ ANMELDUNG_URL  = f"{BASE_URL}/angebote/gymikurs/"
 LOCATION       = "Max-Bill-Platz 11/13, 8050 Zürich"
 
 
-PROMPT_OVERVIEW = """
+HARDCODED_PROMPTS = {
+    "overview": """
 Du bist ein Datenextraktions-Assistent. Extrahiere Anbieter-Metadaten:
 
 - aufsatzkorrektur, einstufungstest, e_learning, pruefungsarchiv, beratungsgespraech,
@@ -54,9 +74,9 @@ Du bist ein Datenextraktions-Assistent. Extrahiere Anbieter-Metadaten:
 - ausgebuchte_kurse: Liste der als AUSGEBUCHT markierten Kurse
 
 Antworte NUR mit reinem JSON: {"metadata": {...}}
-"""
+""",
 
-PROMPT_PDF_LANGGYMI = """
+    "pdf_langgymi": """
 Extrahiere alle Kursinformationen aus diesem PDF-Text.
 Es gibt Kurs M (Mittwoch), Kurs S (Samstag), Kurs F (Ferienkurs).
 
@@ -72,9 +92,9 @@ Für jeden Kurs:
 Antworte NUR mit reinem JSON: {"courses": [...]}
 
 PDF-Inhalt:
-"""
+""",
 
-PROMPT_PDF_KURZGYMI = """
+    "pdf_kurzgymi": """
 Extrahiere alle Kursinformationen aus diesem PDF-Text.
 
 Für jeden Kurs:
@@ -89,7 +109,28 @@ Für jeden Kurs:
 Antworte NUR mit reinem JSON: {"courses": [...]}
 
 PDF-Inhalt:
-"""
+""",
+}
+
+
+def load_prompts() -> dict:
+    """Lädt alle Prompts aus scraper_registry (field_name='prompts').
+
+    Fällt auf HARDCODED_PROMPTS zurück, wenn Registry leer/ungültig.
+    Fehlende Keys werden aus HARDCODED_PROMPTS ergänzt.
+    """
+    registry_value = get_current_value(PROVIDER_ID, SCRAPER_METHOD, "prompts")
+    if registry_value:
+        try:
+            loaded = json.loads(registry_value)
+            merged = {**HARDCODED_PROMPTS, **loaded}
+            print(f"  ✓ {len(loaded)} Prompt(s) aus scraper_registry geladen")
+            return merged
+        except json.JSONDecodeError:
+            print("  ⚠ Registry-JSON ungültig — Fallback auf HARDCODED_PROMPTS")
+            return HARDCODED_PROMPTS
+    print("  ℹ Kein Registry-Eintrag — verwende HARDCODED_PROMPTS als Fallback")
+    return HARDCODED_PROMPTS
 
 
 def scrape_html(url: str, prompt: str) -> dict:
@@ -201,6 +242,9 @@ def main():
         print("  Abbruch: BFH LLM nicht erreichbar.")
         return
 
+    # ROUNDTRIP: Prompts aus scraper_registry laden (mit Fallback)
+    active_prompts = load_prompts()
+
     with ScrapeRun(SCRAPER_METHOD, PROVIDER_ID) as run:
         metadata = {}
         ausgebuchte = []
@@ -209,7 +253,7 @@ def main():
         # Schritt 1: HTML-Übersicht
         try:
             print(f"\n  Schritt 1: Hauptseite — Metadaten")
-            overview = scrape_html(OVERVIEW_URL, PROMPT_OVERVIEW)
+            overview = scrape_html(OVERVIEW_URL, active_prompts["overview"])
             metadata = overview.get("metadata", {}) or {}
             ausgebuchte = [str(k).lower() for k in metadata.get("ausgebuchte_kurse", [])]
             time.sleep(2)
@@ -223,7 +267,7 @@ def main():
             print(f"\n  Schritt 2: PDF Langgymi")
             pdf_text = fetch_pdf_text(PDF_LANGGYMI)
             if pdf_text:
-                r = query_bfh_llm(PROMPT_PDF_LANGGYMI + pdf_text)
+                r = query_bfh_llm(active_prompts["pdf_langgymi"] + pdf_text)
                 if r.get("metadata"):
                     metadata = merge_metadata(metadata, r["metadata"])
                 lang_courses = transform_courses(r.get("courses", []))
@@ -239,7 +283,7 @@ def main():
             print(f"\n  Schritt 3: PDF Kurzgymi")
             pdf_text = fetch_pdf_text(PDF_KURZGYMI)
             if pdf_text:
-                r = query_bfh_llm(PROMPT_PDF_KURZGYMI + pdf_text)
+                r = query_bfh_llm(active_prompts["pdf_kurzgymi"] + pdf_text)
                 if r.get("metadata"):
                     metadata = merge_metadata(metadata, r["metadata"])
                 kurz_courses = transform_courses(r.get("courses", []))
