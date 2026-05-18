@@ -35,7 +35,7 @@ Im Projekt: `app/scraping/self_healing/`
 1. **Tabelle `scraper_registry`** existiert in Supabase (siehe `migrations/001_scraper_registry.sql`)
 2. **Tabelle `scrape_errors`** existiert mit Spalten `html_snapshot`, `fixed_by_ai`, `ai_suggested_selector`, `fixed_at`
 3. **Gemini API-Key** in `.env` als `GEMINI_API_KEY=...`
-4. **Python-Packages:** `google-genai`, `python-dotenv`, `supabase` (sollten in der scrapeGraphAi-venv sein)
+4. **Python-Packages:** `google-genai`, `python-dotenv`, `supabase` (sollten in der scrapegraphai-venv sein)
 
 ## Verwendung
 
@@ -43,7 +43,7 @@ Im Projekt: `app/scraping/self_healing/`
 
 ```powershell
 # venv aktivieren
-.\app\scraping\scrapeGraphAi\venv\Scripts\Activate.ps1
+.\app\scraping\scrapegraphai\venv\Scripts\Activate.ps1
 
 # In den self_healing-Ordner wechseln
 cd .\app\scraping\self_healing\

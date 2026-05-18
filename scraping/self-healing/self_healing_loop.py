@@ -25,11 +25,12 @@ import os
 import sys
 import argparse
 import time
+import requests
 from datetime import datetime, timezone
 
 # scrape_utils Pfad einbinden
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-_SGAI_DIR = os.path.normpath(os.path.join(_THIS_DIR, "..", "scrapeGraphAi"))
+_SGAI_DIR = os.path.normpath(os.path.join(_THIS_DIR, "..", "scrapegraphai"))
 if _SGAI_DIR not in sys.path:
     sys.path.insert(0, _SGAI_DIR)
 
@@ -42,23 +43,89 @@ from registry_helpers import (
 
 
 # =====================================================================
+# HILFSFUNKTION: HTML-Fallback bei leerem Snapshot
+# =====================================================================
+def fetch_html_for_provider(provider_id: int) -> str:
+    """Lädt aktuelles HTML von der Provider-Hauptseite.
+
+    Genutzt als Fallback, wenn scrape_errors.html_snapshot leer ist
+    (z.B. wenn der Scraper den Fehler logged ohne HTML mitzugeben).
+    Begrenzt auf 50KB damit die Gemini-Token-Kosten gering bleiben.
+    """
+    try:
+        result = supabase.table("GymiProviders") \
+            .select("URL") \
+            .eq("ID", provider_id) \
+            .limit(1) \
+            .execute()
+        if not result.data:
+            return ""
+        urls = result.data[0].get("URL") or []
+        # URL ist ein Array von Strings — nimm die erste
+        url = urls[0] if isinstance(urls, list) and urls else (urls if isinstance(urls, str) else "")
+        if not url:
+            return ""
+        print(f"   📡 Lade HTML als Fallback: {url}")
+        resp = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
+        resp.raise_for_status()
+        return resp.text[:50000]  # 50KB cap
+    except Exception as e:
+        print(f"   ⚠ HTML-Fallback fehlgeschlagen: {e}")
+        return ""
+
+
+# =====================================================================
 # KONFIGURATION
 # =====================================================================
-# Mapping von error_type → (scraper_method, field_name in registry)
-# Damit der Loop weiss, was er heilen soll, wenn ein bestimmter Fehler auftritt.
+# Mapping von error_type → scraper_method. Der field_name wird
+# dynamisch ermittelt (siehe resolve_field_name() unten), weil
+# verschiedene Provider unterschiedliche Patterns nutzen:
+#   - Provider 1, 3: field_name='main_prompt' (legacy)
+#   - Provider 2, 4-12: field_name='prompts' (JSON-Objekt mit Sub-Keys)
+# Damit der Loop generisch für alle 12 SGAI-Scraper funktioniert,
+# probieren wir beide Patterns durch und nehmen das, was existiert.
 ERROR_TYPE_MAPPING = {
     # Puppeteer-Fehler
     "PRICE_SELECTOR_FAILED":     ("puppeteer", "price_container"),
     "DATE_SELECTOR_FAILED":      ("puppeteer", "date_container"),
     "COURSEDETAILS_ERROR":       ("puppeteer", "courses_list"),
 
-    # ScrapeGraphAI-Fehler
-    "NO_COURSES_FOUND":          ("scrapegraphai", "main_prompt"),
-    "JSON_PARSE_ERROR":          ("scrapegraphai", "main_prompt"),
-    "LLM_HALLUCINATION":         ("scrapegraphai", "main_prompt"),
-    "SCRAPING_ERROR":            ("scrapegraphai", "main_prompt"),  # generischer SGI-Fehler
-    "MISSING_FIELD":             ("scrapegraphai", "main_prompt"),  # Felder fehlen → Prompt anpassen
+    # ScrapeGraphAI-Fehler (field_name wird via resolve_field_name() bestimmt)
+    "NO_COURSES_FOUND":          ("scrapegraphai", None),
+    "JSON_PARSE_ERROR":          ("scrapegraphai", None),
+    "LLM_HALLUCINATION":         ("scrapegraphai", None),
+    "SCRAPING_ERROR":            ("scrapegraphai", None),  # generischer SGI-Fehler
+    "MISSING_FIELD":             ("scrapegraphai", None),  # Felder fehlen → Prompt anpassen
 }
+
+
+# Beim Patten-Erkennen werden die Felder in dieser Reihenfolge gesucht.
+# 'prompts' zuerst, weil das das aktuelle Standard-Pattern ist (Welle 1-3).
+# 'main_prompt' als Fallback für Legacy-Provider (Avidii, GZ).
+SGAI_FIELD_NAME_CANDIDATES = ["prompts", "main_prompt"]
+
+
+def resolve_field_name(provider_id: int, scraper_method: str) -> str | None:
+    """Ermittelt den tatsächlichen field_name eines Providers.
+
+    Für ScrapeGraphAI: Provider 1+3 nutzen 'main_prompt' (legacy),
+    Provider 2+4-12 nutzen 'prompts' (JSON-Objekt mit Sub-Keys).
+    Diese Funktion fragt die Registry, was wirklich existiert.
+
+    Für Puppeteer: field_name ist statisch (z.B. 'price_container')
+    und kommt aus ERROR_TYPE_MAPPING — diese Funktion wird dort nicht aufgerufen.
+
+    Returns:
+        Den existierenden field_name als String, oder None wenn weder
+        'prompts' noch 'main_prompt' für diesen Provider existiert.
+    """
+    if scraper_method != "scrapegraphai":
+        return None  # für Puppeteer kommt der field_name aus dem Mapping
+
+    for candidate in SGAI_FIELD_NAME_CANDIDATES:
+        if get_current_value(provider_id, scraper_method, candidate) is not None:
+            return candidate
+    return None
 
 
 # =====================================================================
@@ -121,6 +188,15 @@ def analyze_and_suggest(error: dict, llm: LLMProvider) -> tuple[str, str, str]:
         return (None, None, None)
 
     scraper_method, field_name = ERROR_TYPE_MAPPING[error_type]
+
+    # Für ScrapeGraphAI ist field_name None im Mapping → dynamisch auflösen
+    # (verschiedene Provider nutzen 'main_prompt' oder 'prompts'-JSON).
+    if field_name is None:
+        field_name = resolve_field_name(provider_id, scraper_method)
+        if field_name is None:
+            print(f"   ⚠ Provider {provider_id} hat keinen Registry-Eintrag — übersprungen")
+            return (None, None, None)
+
     print(f"   📋 Heile: {scraper_method}.{field_name} für {provider_name}")
 
     # 2. Alten Wert aus Registry laden
@@ -132,15 +208,20 @@ def analyze_and_suggest(error: dict, llm: LLMProvider) -> tuple[str, str, str]:
         print(f"   ℹ Kein Registry-Eintrag — Auto-Create-Modus aktiv")
         old_value = "(noch nicht definiert — bitte Vorschlag von Grund auf erstellen)"
 
-    # 3. Gemini fragen
-    print(f"   🧠 Frage Gemini an ({len(error.get('html_snapshot') or '')} Bytes HTML)...")
+    # 3. HTML-Snapshot: aus scrape_errors oder als Fallback live nachladen
+    html_snapshot = error.get("html_snapshot") or ""
+    if not html_snapshot:
+        html_snapshot = fetch_html_for_provider(provider_id)
+
+    # 4. Gemini fragen
+    print(f"   🧠 Frage Gemini an ({len(html_snapshot)} Bytes HTML)...")
 
     if scraper_method == "puppeteer":
         new_value = llm.suggest_selector(
             provider_name=provider_name,
             field_name=field_name,
             old_selector=old_value,
-            html_snapshot=error.get("html_snapshot") or "",
+            html_snapshot=html_snapshot,
             error_message=error.get("message", ""),
         )
     elif scraper_method == "scrapegraphai":
@@ -148,7 +229,7 @@ def analyze_and_suggest(error: dict, llm: LLMProvider) -> tuple[str, str, str]:
             provider_name=provider_name,
             field_name=field_name,
             old_prompt=old_value,
-            html_snapshot=error.get("html_snapshot") or "",
+            html_snapshot=html_snapshot,
             error_message=error.get("message", ""),
         )
     else:
@@ -162,6 +243,74 @@ def analyze_and_suggest(error: dict, llm: LLMProvider) -> tuple[str, str, str]:
     if new_value.strip() == old_value.strip():
         print(f"   ⚠ Gemini schlägt denselben Wert vor — kein Fix nötig")
         return (None, None, None)
+
+    # JSON-Validierung + intelligentes Merging für 'prompts'-Pattern
+    # (Der Scraper liest mit json.loads — kaputtes JSON bricht ihn).
+    # Gemini liefert manchmal Code-Block-Markup → wir säubern Whitespace + Markdown.
+    if field_name == "prompts":
+        import json as _json
+        cleaned = new_value.strip()
+        # Markdown-Code-Block entfernen, falls vorhanden
+        if cleaned.startswith("```"):
+            cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned[3:]
+            if cleaned.endswith("```"):
+                cleaned = cleaned.rsplit("```", 1)[0]
+            cleaned = cleaned.strip()
+            # Falls "json\n..." nach den Backticks: ersten Lin entfernen
+            if cleaned.startswith("json\n"):
+                cleaned = cleaned[5:]
+
+        try:
+            parsed = _json.loads(cleaned)
+            if not isinstance(parsed, dict):
+                print(f"   ✗ Gemini-JSON ist kein Objekt — verworfen")
+                return (None, None, None)
+            if not parsed:
+                print(f"   ✗ Gemini-JSON ist leer — verworfen")
+                return (None, None, None)
+
+            # Intelligentes Merging: Original-Keys müssen erhalten bleiben.
+            # Falls Gemini neue Keys erfunden hat, fusionieren wir sie in den
+            # ersten Original-Key, statt alles zu verwerfen. Damit ist die Demo
+            # robuster gegen Gemini-Variabilität.
+            try:
+                old_parsed = _json.loads(old_value) if old_value.strip().startswith("{") else {}
+            except _json.JSONDecodeError:
+                old_parsed = {}
+
+            if old_parsed:
+                old_keys = set(old_parsed.keys())
+                new_keys = set(parsed.keys())
+                missing_keys = old_keys - new_keys
+
+                if missing_keys:
+                    # Strategie: nimm den ersten "großen" String aus Geminis Antwort
+                    # und mappe ihn auf die fehlenden Original-Keys (alle bekommen
+                    # dasselbe Prompt, das ist ok als heilender Fallback).
+                    largest_value = max(
+                        (v for v in parsed.values() if isinstance(v, str)),
+                        key=len, default=None
+                    )
+                    if largest_value:
+                        repaired = dict(parsed)
+                        for k in missing_keys:
+                            repaired[k] = largest_value
+                        # Behalte alle Original-Keys und ergänze Gemini-Vorschläge
+                        # nur dort wo sie auch erwartet sind.
+                        final = {k: repaired[k] for k in old_keys if k in repaired}
+                        if len(final) == len(old_keys):
+                            print(f"   ℹ Gemini lieferte andere Keys — gemappt auf Original-Keys {sorted(old_keys)}")
+                            cleaned = _json.dumps(final, ensure_ascii=False)
+                        else:
+                            print(f"   ✗ Konnte fehlende Keys ({missing_keys}) nicht reparieren — verworfen")
+                            return (None, None, None)
+                    else:
+                        print(f"   ✗ Gemini-JSON enthält keine Strings — verworfen")
+                        return (None, None, None)
+            new_value = cleaned  # bereinigtes (ggf. gemergedes) JSON nehmen
+        except _json.JSONDecodeError as e:
+            print(f"   ✗ Gemini-Antwort ist kein gültiges JSON ({e}) — verworfen")
+            return (None, None, None)
 
     print(f"   ✓ Vorschlag von Gemini: {new_value[:80]}{'...' if len(new_value) > 80 else ''}")
     return (scraper_method, field_name, new_value)

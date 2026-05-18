@@ -18,7 +18,7 @@ import sys
 import argparse
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-_SGAI_DIR = os.path.normpath(os.path.join(_THIS_DIR, "..", "scrapeGraphAi"))
+_SGAI_DIR = os.path.normpath(os.path.join(_THIS_DIR, "..", "scrapegraphai"))
 if _SGAI_DIR not in sys.path:
     sys.path.insert(0, _SGAI_DIR)
 
@@ -59,23 +59,43 @@ Antworte NUR mit reinem JSON-Objekt: {"courses": [...]}"""
 
 PROVIDERS_WITH_SGI = list(range(1, 13))  # alle 12 Provider haben SGI-Scraper
 
-# Provider mit auch Puppeteer-Support (haben CSS-Selektoren)
-PROVIDERS_WITH_PUPPETEER = [1, 3]  # Gymivorbereitung ZH, Avidii (Stand: 2 von 5 Puppeteer-Scrapern fertig)
+# Provider mit auch Puppeteer-Support (haben CSS-Selektoren).
+# Stand: alle 5 Puppeteer-Scraper fertig (siehe scraping/puppeteer/*.ts).
+PROVIDERS_WITH_PUPPETEER = [1, 2, 3, 4, 6]
 
 
 # =====================================================================
 # Standard-Selektoren für Puppeteer (fungieren als Initial-Werte)
 # =====================================================================
+# Diese Selektoren werden vom Self-Healing-Loop ersetzt, sobald
+# Layout-Änderungen einen Fehler verursachen. Die hier eingetragenen
+# Werte spiegeln den Stand der jeweiligen Scraper-Skripte zum Zeitpunkt
+# des Refactorings wider.
 PUPPETEER_FIELDS = {
     1: {  # Gymivorbereitung Zürich
-        "course_list":           ".kurs-tabelle tr",
-        "price_container":       ".preis",
+        "course_list":            ".kurs-tabelle tr",
+        "price_container":        ".preis",
         "availability_container": ".verfuegbarkeit",
     },
+    2: {  # Lern-Forum
+        "course_list":            "table.kurstbl tbody tr",
+        "price_container":        "table.kurstbl",       # Preis steht in derselben Tabelle
+        "availability_container": "table.kurstbl",       # Verfuegbarkeit ebenfalls
+    },
     3: {  # Avidii
-        "course_list":           ".course-card",
-        "price_container":       ".pricing-box",
+        "course_list":            ".course-card",
+        "price_container":        ".pricing-box",
         "availability_container": ".availability-status",
+    },
+    4: {  # Learning Culture
+        "course_list":            ".div-table-row",
+        "price_container":        "button.add-to-cart",
+        "availability_container": ".course-location",
+    },
+    6: {  # Nachhilfe Akademie
+        "course_list":            ".vc_tta-panel",
+        "price_container":        ".feature_info",
+        "availability_container": ".vc_tta-panel-body",
     },
 }
 

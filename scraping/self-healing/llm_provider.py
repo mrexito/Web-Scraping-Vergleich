@@ -101,17 +101,48 @@ Wenn du keinen passenden Selector findest, antworte exakt: NO_SUGGESTION
     ) -> Optional[str]:
         """Schlägt einen verbesserten ScrapeGraphAI-Prompt vor.
 
+        Unterstützt zwei Patterns:
+          - Legacy 'main_prompt': old_prompt ist ein einfacher String.
+            Gemini liefert einen verbesserten String.
+          - Standard 'prompts': old_prompt ist ein JSON-Objekt (String-repr.)
+            mit Sub-Prompts (z.B. {"overview": "...", "courses": "..."}).
+            Gemini liefert das verbesserte JSON-Objekt zurück (gleiche Keys).
+
         Args:
             provider_name: z.B. "Lern-Forum"
-            field_name: z.B. "main_prompt"
-            old_prompt: alter Prompt, der LLM-Halluzinationen oder leere Resultate erzeugt
+            field_name: "main_prompt" (legacy) oder "prompts" (Welle 1-3)
+            old_prompt: alter Wert; bei field_name='prompts' ein JSON-String
             html_snapshot: HTML-Auszug der aktuellen Seite (max 50KB)
             error_message: Fehlermeldung (z.B. "0 Kurse extrahiert")
 
         Returns:
-            Neuen Prompt als String, oder None wenn AI nichts vorschlagen kann.
+            Bei 'main_prompt': verbesserter Prompt als String.
+            Bei 'prompts': JSON-String mit allen Sub-Prompts (gleiche Keys).
+            None wenn AI nichts vorschlagen kann.
         """
         html_snippet = html_snapshot[:50000] if html_snapshot else "(kein HTML-Snapshot vorhanden)"
+
+        # Branchen-Prompt: anderer Output-Hinweis je nach Pattern
+        is_json_pattern = (field_name == "prompts")
+
+        if is_json_pattern:
+            # 'prompts'-Pattern: Gemini bekommt das alte JSON, soll es als JSON zurückgeben
+            format_hint = (
+                "Der alte Wert ist ein JSON-Objekt mit Sub-Prompts (z.B. {\"overview\": \"...\", "
+                "\"courses\": \"...\"}). Gib ein NEUES JSON-Objekt mit DENSELBEN Keys zurück, "
+                "aber mit verbesserten Prompt-Texten als Werten.\n\n"
+                "ANTWORT-FORMAT:\n"
+                "Gib NUR das JSON zurück, ohne Erklärung, ohne Markdown, ohne Code-Block-Markup.\n"
+                "Beispiel: {\"overview\": \"verbesserter Prompt-Text...\", \"courses\": \"...\"}\n"
+                "Wenn du keinen besseren Prompt findest, antworte exakt: NO_SUGGESTION"
+            )
+        else:
+            # Legacy 'main_prompt'-Pattern: einfacher String
+            format_hint = (
+                "ANTWORT-FORMAT:\n"
+                "Gib NUR den neuen Prompt zurück, ohne Erklärung, ohne Markdown, ohne Anführungszeichen.\n"
+                "Wenn du keinen besseren Prompt findest, antworte exakt: NO_SUGGESTION"
+            )
 
         prompt = f"""Du bist ein Experte für ScrapeGraphAI (LLM-basiertes Web-Scraping).
 Ein Scraping-Prompt funktioniert nicht mehr zuverlässig.
@@ -135,9 +166,7 @@ der die Kurs-Daten zuverlässig extrahiert. Der Prompt muss:
 3. Edge-Cases adressieren (fehlende Felder, mehrere Kurstypen)
 4. Auf die tatsächliche Seitenstruktur eingehen, die du im HTML siehst
 
-ANTWORT-FORMAT:
-Gib NUR den neuen Prompt zurück, ohne Erklärung, ohne Markdown, ohne Anführungszeichen.
-Wenn du keinen besseren Prompt findest, antworte exakt: NO_SUGGESTION
+{format_hint}
 """
 
         return self._generate_with_retry(prompt)
