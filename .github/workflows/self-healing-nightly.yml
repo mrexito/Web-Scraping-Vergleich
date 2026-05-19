@@ -53,6 +53,10 @@ jobs:
           GEMINI_API_KEY:               ${{ secrets.GEMINI_API_KEY }}
           NEXT_PUBLIC_SUPABASE_URL:     ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY:    ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # Der Self-Healing-Loop importiert via scrape_utils einen BFH-LLM-Client,
+          # der beim Modul-Import eager initialisiert wird (auch wenn nicht genutzt).
+          # Daher muss BFH_LLM_API_KEY hier verfügbar sein, damit der Import nicht abbricht.
+          BFH_LLM_API_KEY:              ${{ secrets.BFH_LLM_API_KEY }}
         # Default-Limit aus self_healing_loop.py wird verwendet (alle offenen Fehler).
         # Falls in einer Nacht zu viele Errors anliegen, kann --limit über workflow_dispatch
         # eingaben gesteuert werden.
