@@ -7,13 +7,17 @@ name: Self-Healing Nightly
 # Trigger: Jeden Tag um 03:00 UTC + manuell via "Run workflow"-Button.
 #
 # Voraussetzungen (Repo-Secrets unter Settings → Secrets and variables → Actions):
-#   - GEMINI_API_KEY               (Google AI Studio API Key)
+#   - GEMINI_API_KEY               (Google AI Studio API Key, Free Tier ok)
 #   - NEXT_PUBLIC_SUPABASE_URL     (Supabase Project URL)
 #   - SUPABASE_SERVICE_ROLE_KEY    (Supabase Service Role Key)
+#   - BFH_LLM_API_KEY              (eager-Initialisierung in scrape_utils.py)
 #
-# Hinweis: Die Schedule-Cron-Zeit verwendet UTC. 03:00 UTC = 04:00 (Winter)
-# / 05:00 (Sommer) Schweizer Zeit. Wirklich nachts läuft der Loop also
-# zwischen 04:00 und 05:00 Schweizer Lokalzeit — passt zu "nightly".
+# Hinweis Schedule: 03:00 UTC = 04:00 (Winter) / 05:00 (Sommer) Schweizer Zeit.
+#
+# Hinweis Free-Tier-Limits:
+#   - Gemini 2.5 Flash Free Tier: 20 generate_content-Requests pro Tag.
+#   - Wir limitieren auf 5 Errors pro Run (1-3 Requests pro Error, also max. 15).
+#   - Bleibt sicher unter Tageslimit auch bei zusätzlichem manuellen Trigger.
 # =============================================================================
 
 on:
@@ -57,12 +61,15 @@ jobs:
           # der beim Modul-Import eager initialisiert wird (auch wenn nicht genutzt).
           # Daher muss BFH_LLM_API_KEY hier verfügbar sein, damit der Import nicht abbricht.
           BFH_LLM_API_KEY:              ${{ secrets.BFH_LLM_API_KEY }}
-        # Default-Limit aus self_healing_loop.py wird verwendet (alle offenen Fehler).
-        # Falls in einer Nacht zu viele Errors anliegen, kann --limit über workflow_dispatch
-        # eingaben gesteuert werden.
+        # --limit 5: Gemini Free Tier erlaubt nur 20 generate_content-Requests pro Tag.
+        # Pro Error sind 1-3 Requests nötig (Retry bei 429). 5 Errors/Run = max. 15 Requests.
+        # → Bleibt sicher unter dem Tageslimit, auch wenn manuell + nightly im selben Tag laufen.
+        # Step-Timeout 8 Min: Hartes Limit. Falls Loop bei 429 hängt, wird Run terminiert
+        # bevor der Workflow-Default (6h!) zuschlägt.
+        timeout-minutes: 8
         run: |
           cd scraping/self-healing
-          python self_healing_loop.py
+          python self_healing_loop.py --limit 5
 
       - name: Summarize run
         if: always()
