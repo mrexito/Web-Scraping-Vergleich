@@ -68,13 +68,6 @@ export type Database = {
             referencedRelation: "GymiProviders"
             referencedColumns: ["ID"]
           },
-          {
-            foreignKeyName: "KursDetails_ID_fkey"
-            columns: ["ID"]
-            isOneToOne: true
-            referencedRelation: "providers"
-            referencedColumns: ["id"]
-          },
         ]
       }
       courses: {
@@ -151,13 +144,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "GymiProviders"
             referencedColumns: ["ID"]
-          },
-          {
-            foreignKeyName: "courses_provider_id_fkey"
-            columns: ["provider_id"]
-            isOneToOne: false
-            referencedRelation: "providers"
-            referencedColumns: ["id"]
           },
         ]
       }
@@ -236,13 +222,6 @@ export type Database = {
             referencedRelation: "GymiProviders"
             referencedColumns: ["ID"]
           },
-          {
-            foreignKeyName: "price_history_provider_id_fkey"
-            columns: ["provider_id"]
-            isOneToOne: false
-            referencedRelation: "providers"
-            referencedColumns: ["id"]
-          },
         ]
       }
       scrape_errors: {
@@ -289,13 +268,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "GymiProviders"
             referencedColumns: ["ID"]
-          },
-          {
-            foreignKeyName: "scrape_errors_provider_id_fkey"
-            columns: ["provider_id"]
-            isOneToOne: false
-            referencedRelation: "providers"
-            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "scrape_errors_run_id_fkey"
@@ -345,13 +317,6 @@ export type Database = {
             referencedRelation: "GymiProviders"
             referencedColumns: ["ID"]
           },
-          {
-            foreignKeyName: "scrape_runs_provider_id_fkey"
-            columns: ["provider_id"]
-            isOneToOne: false
-            referencedRelation: "providers"
-            referencedColumns: ["id"]
-          },
         ]
       }
       scraper_registry: {
@@ -395,13 +360,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "GymiProviders"
             referencedColumns: ["ID"]
-          },
-          {
-            foreignKeyName: "scraper_registry_provider_id_fkey"
-            columns: ["provider_id"]
-            isOneToOne: false
-            referencedRelation: "providers"
-            referencedColumns: ["id"]
           },
         ]
       }
@@ -470,36 +428,7 @@ export type Database = {
       }
     }
     Views: {
-      providers: {
-        Row: {
-          created_at: string | null
-          id: number | null
-          logo_url: string | null
-          name: string | null
-          official_name: string | null
-          updated_at: string | null
-          website: string | null
-        }
-        Insert: {
-          created_at?: never
-          id?: number | null
-          logo_url?: never
-          name?: string | null
-          official_name?: string | null
-          updated_at?: never
-          website?: never
-        }
-        Update: {
-          created_at?: never
-          id?: number | null
-          logo_url?: never
-          name?: string | null
-          official_name?: string | null
-          updated_at?: never
-          website?: never
-        }
-        Relationships: []
-      }
+      [_ in never]: never
     }
     Functions: {
       [_ in never]: never

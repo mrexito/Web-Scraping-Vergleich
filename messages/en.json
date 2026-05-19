@@ -228,7 +228,7 @@
     "scopeKundS": "Art and Sports Gymnasium",
     "sourceLabel": "Source: zh.ch ·",
     "regBetween": "{from} to {to}",
-    "disclaimer": "This data is extracted via zap_info_scraper.py (ScrapeGraphAI with the BFH LLM) from official zh.ch sources and manually verified. The official information of the Canton of Zurich is always authoritative. Wiring this scraper into an automated pipeline (cron) is defined as future work.",
+    "disclaimer": "This data is manually verified from official sources (zh.ch). The official information of the Canton of Zurich is always authoritative. A fully automated update via web scraping is defined as future work in the roadmap.",
     "quickInfoTitle": "Important dates",
     "heroBanner": "Next examination",
     "timelineRegistration": "Registration",
@@ -262,5 +262,262 @@
     "live": "Live",
     "updated": "Updated",
     "disconnected": "Offline"
+  },
+  "report": {
+    "header": {
+      "kicker": "Bachelor's Thesis · Comparison Portal for Grammar School Preparation Courses (Zurich)",
+      "title": "Comparison of Scraping Methods",
+      "intro": "This analysis compares three scraping methods used in my bachelor's thesis to build a comparison portal for grammar school preparation courses: Puppeteer (browser automation), Bright Data (cloud service), and ScrapeGraphAI (LLM-based). The evaluation follows six criteria:",
+      "criteria": [
+        "Completeness",
+        "Accuracy",
+        "Reliability",
+        "Effort & Costs",
+        "Performance",
+        "Developer Experience"
+      ],
+      "statusLine": "As of: {date} · Data basis: {courses} courses, {providers} providers, {runs} runs"
+    },
+    "methods": {
+      "puppeteer": "Puppeteer",
+      "brightdata": "Bright Data",
+      "sgi": "ScrapeGraphAI"
+    },
+    "labels": {
+      "criterion": "Criterion",
+      "aspect": "Aspect",
+      "provider": "Provider",
+      "total": "Total",
+      "successRate": "{pct}% success",
+      "successOf": "{success} / {total}",
+      "medianRuns": "Median: {median} s · {runs} runs",
+      "courseSeconds": "{value} s",
+      "notImplemented": "Not implemented",
+      "expectedCourses": "(expected: {n} courses)"
+    },
+    "section1": {
+      "title": "1. Completeness",
+      "subtitle": "How many of the expected courses and fields are actually extracted?",
+      "intro": "The completeness analysis covers two providers for which all three methods were implemented: Gymivorbereitung Zürich (26 expected courses) and Avidii (14 expected courses). It shows both the number of courses found and the fill rate of critical fields.",
+      "liveDataTitle": "Live data: Courses per provider and method",
+      "caption11": "Table 1.1: Number of extracted courses per provider and method (live data from database).",
+      "caption12": "Table 1.2: Field coverage for Gymivorbereitung Zürich (manually determined from scraper outputs).",
+      "caption13": "Table 1.3: Field coverage for Avidii (manually determined from scraper outputs).",
+      "fullCoverageNote": "Full three-way coverage exists for {count} providers ({names}). Field coverage shows that Bright Data outperforms the Puppeteer scraper on date fields (Puppeteer: not implemented for GZ), while ScrapeGraphAI covers langgymi well but loses kurzgymi date information.",
+      "providerGz": "Gymivorbereitung Zürich (ID 1)",
+      "providerAvidii": "Avidii (ID 3)",
+      "fields": {
+        "coursesFound": "Courses found",
+        "priceChf": "price_chf",
+        "startDate": "start_date",
+        "endDate": "end_date",
+        "location": "location",
+        "verfuegbarkeit": "availability"
+      },
+      "notes": {
+        "notImplemented": "Not implemented",
+        "onlyLanggymi": "Only langgymi",
+        "notExtracted": "Not extracted",
+        "twoCoursesMissing": "2 courses missing",
+        "twoSingleNull": "2 individual courses = null"
+      }
+    },
+    "section2": {
+      "title": "2. Accuracy",
+      "subtitle": "Are the extracted values correct? Are formats converted properly?",
+      "intro": "While completeness quantifies how many values are present, accuracy shows how correct those values are. The following overview compares the extraction strategies of the three methods for the key fields.",
+      "caption": "Table 2: Comparison of extraction accuracy per data field.",
+      "outro": "The analysis shows that all three methods are equivalent for simple values (prices). Differences emerge with more complex conversions (date format, availability status): here the manual implementation of the Puppeteer scripts pays off, while Bright Data offers a clean middle ground between effort and accuracy. ScrapeGraphAI is highly dependent on prompt quality and page structure.",
+      "rows": [
+        {
+          "aspect": "Price Gymivorbereitung Zürich",
+          "puppeteer": "CHF 3290 — directly from DOM",
+          "brightdata": "CHF 3290 — directly extracted",
+          "sgi": "CHF 3290 — via LLM"
+        },
+        {
+          "aspect": "Price Avidii",
+          "puppeteer": "From .pricing-box — direct",
+          "brightdata": "Hardcoded fallback price (CHF 2950 / 3650) — risk on price change",
+          "sgi": "From page content via LLM"
+        },
+        {
+          "aspect": "Date format",
+          "puppeteer": "«27. Aug 2025» → ISO. GZ: start/end_date missing!",
+          "brightdata": "ISO & DD.MM.YYYY — correctly converted",
+          "sgi": "DD.MM.YYYY → ISO. GZ: only 14/26 filled"
+        },
+        {
+          "aspect": "Availability",
+          "puppeteer": "CSS color + text — normalized correctly",
+          "brightdata": "Link text recognized — cleaned via regex",
+          "sgi": "LLM interpretation"
+        },
+        {
+          "aspect": "Individual course",
+          "puppeteer": "price_chf = null",
+          "brightdata": "price_chf = null",
+          "sgi": "price_chf = null"
+        },
+        {
+          "aspect": "Online courses",
+          "puppeteer": "CSS / text check",
+          "brightdata": "Field «online» directly available",
+          "sgi": "LLM detects online indicators"
+        },
+        {
+          "aspect": "Early bird discount",
+          "puppeteer": "price_regular_chf + discount_valid_until",
+          "brightdata": "price_regular_chf + discount_valid_until",
+          "sgi": "price_regular_chf + discount_valid_until"
+        }
+      ]
+    },
+    "section3": {
+      "title": "3. Reliability",
+      "subtitle": "How consistent are the results? How many runs fail?",
+      "intro": "Reliability measures how often a scraper run completes successfully and how consistent the results are across multiple runs. The following live data comes from the scrape_runs table.",
+      "successRateTitle": "Live data: Success rate per method",
+      "caption31": "Figure 3.1: Successful vs. total runs per method (live from database).",
+      "riskProfileTitle": "Risk profiles",
+      "caption": "Table 3: Qualitative risk analysis of the three methods.",
+      "outro": "In live operation, all three methods achieve a high success rate, but with different failure patterns: Puppeteer fails primarily on DOM structure changes, Bright Data on external timeouts, and ScrapeGraphAI on JSON parsing errors when the LLM returns invalid responses.",
+      "rows": [
+        {
+          "criterion": "Common error types",
+          "puppeteer": "INSERT_ERROR (2×), COURSEDETAILS_ERROR, METADATA_ERROR",
+          "brightdata": "Timeout risk (120s), fallback price risk",
+          "sgi": "LLM hallucination, BFH VPN required, inconsistent results"
+        },
+        {
+          "criterion": "Main risk",
+          "puppeteer": "Layout change → selectors break",
+          "brightdata": "API outage / fallback price outdated",
+          "sgi": "LLM variability — courses can be missing"
+        },
+        {
+          "criterion": "Consistency across runs",
+          "puppeteer": "Very high — same results",
+          "brightdata": "High — BD API stable",
+          "sgi": "Medium — LLM can vary"
+        }
+      ]
+    },
+    "section4": {
+      "title": "4. Effort & Costs",
+      "subtitle": "How much effort does implementation require? What ongoing costs arise?",
+      "intro": "This dimension considers initial implementation, maintenance effort, and ongoing operating costs. Since BFH students have free access to the internal LLM, no licensing costs apply for ScrapeGraphAI — Bright Data is the only paid method here.",
+      "caption": "Table 4: Effort and cost comparison.",
+      "rows": [
+        {
+          "criterion": "Lines of code",
+          "puppeteer": "Approx. 400 LOC — high complexity",
+          "brightdata": "Approx. 200 LOC — medium complexity",
+          "sgi": "Approx. 150 LOC — low complexity"
+        },
+        {
+          "criterion": "Setup effort",
+          "puppeteer": "Medium — Puppeteer + website analysis",
+          "brightdata": "High — BD account + collector configuration",
+          "sgi": "Low — library + prompt writing"
+        },
+        {
+          "criterion": "Maintenance effort",
+          "puppeteer": "High — for layout changes",
+          "brightdata": "Medium — collector schema",
+          "sgi": "Low — only adjust prompt"
+        },
+        {
+          "criterion": "Cost per run",
+          "puppeteer": "CHF 0.00 — free",
+          "brightdata": "Paid — per API request",
+          "sgi": "CHF 0.00 — BFH LLM free"
+        },
+        {
+          "criterion": "External dependencies",
+          "puppeteer": "None — only npm packages",
+          "brightdata": "BD account + API token + collector ID",
+          "sgi": "BFH VPN + BFH API key"
+        },
+        {
+          "criterion": "Portability",
+          "puppeteer": "Medium — code is website-specific",
+          "brightdata": "High — collector configurable",
+          "sgi": "Very high — only change the prompt"
+        },
+        {
+          "criterion": "Technology",
+          "puppeteer": "TypeScript / Node.js / Puppeteer",
+          "brightdata": "Python / BrightData REST API",
+          "sgi": "Python / ScrapeGraphAI + BFH LLM 120B"
+        }
+      ]
+    },
+    "section5": {
+      "title": "5. Performance",
+      "subtitle": "How fast does a scraper run? Where are the bottlenecks?",
+      "intro": "The runtime data comes directly from the database ({runs} recorded runs). Mean and median are calculated per method.",
+      "caption51": "Figure 5.1: Average runtime per method (live from database).",
+      "visualizationTitle": "Runtime visualization",
+      "propertiesTitle": "Performance properties",
+      "caption": "Table 5: Architecture-driven performance characteristics.",
+      "rows": [
+        {
+          "criterion": "Parallelization",
+          "puppeteer": "No — sequential per URL",
+          "brightdata": "Yes (API) — all URLs in one call",
+          "sgi": "No — sequential per URL"
+        },
+        {
+          "criterion": "Bottleneck",
+          "puppeteer": "networkidle2 — waiting for full load",
+          "brightdata": "Polling 10s interval, max 120s timeout",
+          "sgi": "LLM inference time — 120B parameter model"
+        }
+      ]
+    },
+    "section6": {
+      "title": "6. Developer Experience",
+      "subtitle": "What was the personal experience during implementation?",
+      "intro": "While the five preceding criteria capture objectively measurable aspects, this chapter highlights the qualitative developer experience — learning curve, pain points, and subjective impression. This dimension complements the quantitative data and documents the practical work with the methods.",
+      "caption": "Table 6: Developer experience reflection.",
+      "rows": [
+        {
+          "criterion": "Estimated implementation time (total)",
+          "puppeteer": "Approx. 5 days for 5 scrapers incl. refactoring",
+          "brightdata": "Approx. 2 days for 2 scrapers incl. account setup",
+          "sgi": "Approx. 3 days for 12 scrapers incl. prompt engineering"
+        },
+        {
+          "criterion": "Learning curve",
+          "puppeteer": "Steep — requires CSS selector knowledge",
+          "brightdata": "Steep — proprietary collector concept",
+          "sgi": "Flat — prompt engineering is intuitive"
+        },
+        {
+          "criterion": "Debugging experience",
+          "puppeteer": "Easily traceable — DevTools + selector test",
+          "brightdata": "Difficult — black-box API behavior",
+          "sgi": "Difficult — LLM occasionally returns unexpectedly different results"
+        },
+        {
+          "criterion": "Sources of frustration",
+          "puppeteer": "Layout changes, cookie banners, dynamic content",
+          "brightdata": "Account lockout during testing, timeouts hard to reproduce",
+          "sgi": "BFH VPN issues, LLM hallucinations, JSON parsing failures"
+        },
+        {
+          "criterion": "Fun factor",
+          "puppeteer": "Medium — CSS detective work can be engaging",
+          "brightdata": "Low — feels like an API wrapper",
+          "sgi": "High — creative prompt engineering, fast results"
+        }
+      ]
+    },
+    "conclusion": {
+      "title": "Conclusion",
+      "body": "The three scraping methods have different strengths: Puppeteer is the most reliable and most accurate, but requires the highest implementation and maintenance effort. Bright Data is the fastest and lowest-maintenance method, but it is paid and highly dependent on the external service. ScrapeGraphAI has the flattest learning curve and the lowest code overhead, but is slower and less consistent."
+    },
+    "footer": "Live data in this report is loaded from the database on every request. Sources: tables scrape_runs, scrape_errors, courses, GymiProviders. Static content: see app/_lib/reportContent.ts."
   }
 }

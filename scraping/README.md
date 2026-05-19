@@ -20,7 +20,7 @@ The thesis evaluates the three frameworks across:
 | Approach | DOM selectors | LLM-driven | Managed proxies |
 | Resilience | Manual selector fixes | Self-healing via LLM | Provider-side |
 
-`PRIMARY_SCRAPER_METHOD` in `app/page.tsx` is currently set to `scrapegraphai`
+`PRIMARY_SCRAPER_METHOD` in `app/[locale]/page.tsx` is currently set to `scrapegraphai`
 because it is the only method covering all 12 providers, avoiding duplicates in
 the UI.
 

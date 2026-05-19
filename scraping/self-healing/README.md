@@ -19,20 +19,23 @@ aktiv, ohne Code-Änderung.
 ## Dateien
 
 ```
-self_healing/
-├── llm_provider.py        # Gemini-Wrapper (austauschbar)
-├── registry_helpers.py    # DB-Funktionen für scraper_registry
-├── self_healing_loop.py   # Hauptskript: Detect → Analyze → Suggest → Apply → Mark
-└── README.md              # diese Datei
+scraping/self-healing/
+├── llm_provider.py             # Gemini-Wrapper (austauschbar)
+├── registry_helpers.py         # DB-Funktionen für scraper_registry
+├── self_healing_loop.py        # Hauptskript: Detect → Analyze → Suggest → Apply → Mark
+├── demo_self_healing.py        # One-Click-Demo für die Verteidigung
+├── init_registry.py            # Initial-Befüllung der scraper_registry
+├── init_avidii_roundtrip.sql   # Provider 3 (main_prompt-Pattern)
+├── init_roundtrip_wave1.sql    # Wave 1: Provider 2, 9, 11, 12
+├── init_roundtrip_wave2.sql    # Wave 2: Provider 5, 6, 10
+├── init_roundtrip_wave3.sql    # Wave 3: Provider 4, 7, 8
+├── ROUNDTRIP_DEMO_E2E.md       # Anleitung zur Demo-Ausführung
+└── README.md                   # diese Datei
 ```
-
-## Wo platzieren
-
-Im Projekt: `app/scraping/self_healing/`
 
 ## Voraussetzungen
 
-1. **Tabelle `scraper_registry`** existiert in Supabase (siehe `migrations/001_scraper_registry.sql`)
+1. **Tabelle `scraper_registry`** existiert in Supabase
 2. **Tabelle `scrape_errors`** existiert mit Spalten `html_snapshot`, `fixed_by_ai`, `ai_suggested_selector`, `fixed_at`
 3. **Gemini API-Key** in `.env` als `GEMINI_API_KEY=...`
 4. **Python-Packages:** `google-genai`, `python-dotenv`, `supabase` (sollten in der scrapegraphai-venv sein)
@@ -43,10 +46,10 @@ Im Projekt: `app/scraping/self_healing/`
 
 ```powershell
 # venv aktivieren
-.\app\scraping\scrapegraphai\venv\Scripts\Activate.ps1
+.\scraping\scrapegraphai\venv\Scripts\Activate.ps1
 
-# In den self_healing-Ordner wechseln
-cd .\app\scraping\self_healing\
+# In den self-healing-Ordner wechseln
+cd .\scraping\self-healing\
 
 # Loop ausführen
 python self_healing_loop.py
@@ -58,6 +61,16 @@ Output zeigt jeden Fehler einzeln durchgegangen mit den 5 Schritten:
 - SUGGEST (Geminis Vorschlag)
 - APPLY (Update in scraper_registry)
 - MARK (scrape_errors.fixed_by_ai = true)
+
+### Demo für die Verteidigung
+
+Für eine vollständige One-Click-Demo (inkl. Cleanup) siehe `ROUNDTRIP_DEMO_E2E.md`:
+
+```powershell
+python demo_self_healing.py              # beide Demos nacheinander
+python demo_self_healing.py --only sgi   # nur ScrapeGraphAI-Demo
+python demo_self_healing.py --only puppeteer  # nur Puppeteer-Demo
+```
 
 ### Mit Optionen
 
@@ -72,7 +85,7 @@ python self_healing_loop.py --dry-run
 python self_healing_loop.py --limit 3 --dry-run
 ```
 
-### Automatisch nightly (z.B. via GitHub Actions)
+### Automatisch nightly (Future Work, z.B. via GitHub Actions)
 
 In `.github/workflows/self_healing_nightly.yml`:
 
@@ -92,7 +105,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install google-genai python-dotenv supabase
-      - run: python app/scraping/self_healing/self_healing_loop.py
+      - run: python scraping/self-healing/self_healing_loop.py
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -145,13 +158,13 @@ dokumentiert als bewusste Architekturentscheidung.
 
 ## Demo-Szenario für Kolloquium
 
-1. **Vor der Demo:** Manuell einen Test-Fehler in `scrape_errors` einfügen
-   (mit echtem HTML-Snippet, kaputtem Selector)
-2. **Loop starten:** `python self_healing_loop.py`
-3. **Live zeigen:** wie Gemini den neuen Selector vorschlägt
-4. **DB öffnen:** `scraper_registry` zeigt den aktualisierten Wert mit
+Siehe `ROUNDTRIP_DEMO_E2E.md` für die ausführliche Anleitung. Kurzfassung:
+
+1. **Demo starten:** `python demo_self_healing.py`
+2. **Live zeigen:** wie Gemini den neuen Selector / Prompt vorschlägt
+3. **DB öffnen:** `scraper_registry` zeigt den aktualisierten Wert mit
    `last_updated_by = 'self_healing_loop'`
-5. **Beweisführung:** ein erneuter Scraper-Lauf nutzt automatisch den neuen Wert
+4. **Cleanup:** Skript fragt am Ende, ob DB-Zustand zurückgesetzt werden soll
 
 ## Modell und Kosten
 

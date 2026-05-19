@@ -55,7 +55,6 @@ This structure provides:
 - Supabase (PostgreSQL) with normalized schema
   - **8 tables**: `GymiProviders`, `CourseDetails`, `courses`, `zap_info`,
     `scrape_runs`, `scrape_errors`, `price_history`, `scraper_registry`
-  - **1 view**: `providers` (legacy compatibility for older join syntax)
 - Auto-generated TypeScript types via `supabase gen types`
 
 ### Scraping Frameworks

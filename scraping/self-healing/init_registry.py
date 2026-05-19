@@ -182,7 +182,7 @@ def run(reset: bool = False):
             note_suffix="Generischer SGI-Prompt — Self-Healing kann pro Provider verfeinern.",
         )
 
-    # 3. Puppeteer-Felder für die 2 Provider mit Puppeteer
+    # 3. Puppeteer-Felder für die 5 Provider mit Puppeteer
     print("\n--- Puppeteer: Selektoren für vorhandene Puppeteer-Scraper ---")
     for pid, fields in PUPPETEER_FIELDS.items():
         name = provider_names.get(pid, f"Provider {pid}")
