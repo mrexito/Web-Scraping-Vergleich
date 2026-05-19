@@ -1,0 +1,74 @@
+name: ZAP Info Scraper Monthly
+
+# =============================================================================
+# AUTOMATISIERTER MONATLICHER LAUF DES ZAP-INFO-SCRAPERS
+#
+# Ziel: Aktualisierung der ZAP-Prüfungstermine aus zh.ch via BFH-LLM.
+# Trigger: 1. Tag jedes Monats um 04:00 UTC + manuell via "Run workflow"-Button.
+#
+# Begründung der Frequenz: ZAP-Termine werden nur ein- bis zweimal pro
+# Schuljahr aktualisiert. Monatliches Scraping ist konservativ — fängt
+# Termin-Änderungen zeitnah ab, ohne unnötige Last auf den BFH-LLM.
+#
+# Voraussetzungen (Repo-Secrets):
+#   - BFH_LLM_API_KEY              (BFH LLM API Key)
+#   - NEXT_PUBLIC_SUPABASE_URL     (Supabase Project URL)
+#   - SUPABASE_SERVICE_ROLE_KEY    (Supabase Service Role Key)
+#
+# Voraussetzung Netzwerk:
+#   - inference.mlmp.ti.bfh.ch muss von GitHub-Runnern aus erreichbar sein
+#     (am 19.05.2026 mit curl bestätigt: StatusCode 200 OK)
+#
+# WICHTIG: Da LLM-Output halluzinieren kann, ist dieser Lauf zwar
+# automatisiert, aber jeder Eintrag in zap_info bekommt
+# updated_by = 'scraper:zh.ch' — und sollte vor dem produktiven
+# Vertrauen manuell verifiziert werden (siehe README "Why not fully scheduled?").
+# =============================================================================
+
+on:
+  schedule:
+    # Jeden 1. des Monats um 04:00 UTC
+    - cron: '0 4 1 * *'
+
+  # Erlaubt manuelles Triggern über die GitHub-Actions-Oberfläche
+  workflow_dispatch:
+
+jobs:
+  run-zap-scraper:
+    name: Run ZAP Info Scraper
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # ZAP-Scraper braucht ScrapeGraphAI + langchain-openai für BFH-LLM-Anbindung
+          pip install scrapegraphai langchain-openai supabase python-dotenv playwright
+          # Playwright Browser für ScrapeGraphAI
+          python -m playwright install chromium
+          python -m playwright install-deps chromium || true
+
+      - name: Run ZAP Info scraper
+        env:
+          BFH_LLM_API_KEY:              ${{ secrets.BFH_LLM_API_KEY }}
+          NEXT_PUBLIC_SUPABASE_URL:     ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY:    ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          cd scraping/zap-info
+          python zap_info_scraper.py
+
+      - name: Summarize run
+        if: always()
+        run: |
+          echo "ZAP-Scraper run completed at $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          echo "Check Supabase zap_info table for updated entries."
+          echo "Reminder: Manual verification of scraped exam dates recommended before production trust."

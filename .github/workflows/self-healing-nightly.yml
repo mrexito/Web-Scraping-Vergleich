@@ -1,0 +1,65 @@
+name: Self-Healing Nightly
+
+# =============================================================================
+# AUTOMATISIERTER NIGHTLY-RUN DES SELF-HEALING-LOOPS
+#
+# Ziel: Tägliche AI-basierte Reparatur von Scraper-Selektoren/Prompts.
+# Trigger: Jeden Tag um 03:00 UTC + manuell via "Run workflow"-Button.
+#
+# Voraussetzungen (Repo-Secrets unter Settings → Secrets and variables → Actions):
+#   - GEMINI_API_KEY               (Google AI Studio API Key)
+#   - NEXT_PUBLIC_SUPABASE_URL     (Supabase Project URL)
+#   - SUPABASE_SERVICE_ROLE_KEY    (Supabase Service Role Key)
+#
+# Hinweis: Die Schedule-Cron-Zeit verwendet UTC. 03:00 UTC = 04:00 (Winter)
+# / 05:00 (Sommer) Schweizer Zeit. Wirklich nachts läuft der Loop also
+# zwischen 04:00 und 05:00 Schweizer Lokalzeit — passt zu "nightly".
+# =============================================================================
+
+on:
+  schedule:
+    # Jeden Tag um 03:00 UTC
+    - cron: '0 3 * * *'
+
+  # Erlaubt manuelles Triggern über die GitHub-Actions-Oberfläche
+  workflow_dispatch:
+
+jobs:
+  run-self-healing:
+    name: Run Self-Healing Loop
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # Minimal-Set: nur was self_healing_loop.py + llm_provider.py + scrape_utils.py
+          # tatsächlich importieren. Keine ScrapeGraphAI-Last hier.
+          pip install supabase python-dotenv requests google-genai
+
+      - name: Run self-healing loop
+        env:
+          GEMINI_API_KEY:               ${{ secrets.GEMINI_API_KEY }}
+          NEXT_PUBLIC_SUPABASE_URL:     ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY:    ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        # Default-Limit aus self_healing_loop.py wird verwendet (alle offenen Fehler).
+        # Falls in einer Nacht zu viele Errors anliegen, kann --limit über workflow_dispatch
+        # eingaben gesteuert werden.
+        run: |
+          cd scraping/self-healing
+          python self_healing_loop.py
+
+      - name: Summarize run
+        if: always()
+        run: |
+          echo "Self-Healing-Loop run completed at $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          echo "Check Supabase scrape_errors and scraper_registry for results."
