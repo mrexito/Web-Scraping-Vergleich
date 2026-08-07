@@ -6,7 +6,7 @@
     "start": "next start",
     "test": "jest",
     "clear_jest": "jest --clearCache",
-    "generate": "npx supabase gen types --lang=typescript --project-id huxheggwzhfswlqsacag --schema public > database.types.ts",
+    "generate": "npx supabase gen types --lang=typescript --project-id epiekraadwkxbtadzhnp --schema public > database.types.ts",
     "scrape:all": "concurrently \"ts-node --project tsconfig.scraper.json -r tsconfig-paths/register scraping/puppeteer/avidiiScraper.ts\" \"ts-node --project tsconfig.scraper.json -r tsconfig-paths/register scraping/puppeteer/gymivorbereitungZuerichScraper.ts\" \"ts-node --project tsconfig.scraper.json -r tsconfig-paths/register scraping/puppeteer/learningCultureScraper.ts\" \"ts-node --project tsconfig.scraper.json -r tsconfig-paths/register scraping/puppeteer/lernForumScraper.ts\" \"ts-node --project tsconfig.scraper.json -r tsconfig-paths/register scraping/puppeteer/nachhilfeAkademieScraper.ts\""
   },
   "dependencies": {
@@ -47,6 +47,7 @@
     "puppeteer": "^23.11.1",
     "supabase": "^2.76.17",
     "ts-jest": "^29.4.6",
+    "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.9.3"
   }
