@@ -24,6 +24,11 @@ build
 .env.*.local
 !.env.example
 
+# Local notes containing secrets/keys
+Informationen.docx
+~$*.docx
+*.tmp
+
 # Logs
 logs
 *.log
