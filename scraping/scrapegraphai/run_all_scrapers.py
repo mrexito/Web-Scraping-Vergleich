@@ -6,8 +6,11 @@ Startet alle ScrapeGraphAI-Scraper parallel.
 Verwendung:
   python run_all_scrapers.py
 """
+import os
 import subprocess
 import sys
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Alle 12 ScrapeGraphAI-Scraper (vollständige Provider-Coverage)
 scrapers = [
@@ -28,7 +31,7 @@ scrapers = [
 processes = []
 for scraper in scrapers:
     print(f"Starte {scraper}...")
-    p = subprocess.Popen([sys.executable, scraper])
+    p = subprocess.Popen([sys.executable, os.path.join(SCRIPT_DIR, scraper)])
     processes.append((scraper, p))
 
 for scraper, p in processes:
