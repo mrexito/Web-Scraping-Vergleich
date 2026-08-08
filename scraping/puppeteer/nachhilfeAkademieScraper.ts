@@ -20,13 +20,11 @@ const urls = [
   {
     url: 'https://nachhilfeakademie.ch/preise-gymivorbereitung-langgymnasium/',
     course_type: 'langgymi',
-    intensivTableId: 'tablepress-3',
     anmeldungUrl: 'https://nachhilfeakademie.ch/langzeitgymnasium/',
   },
   {
     url: 'https://nachhilfeakademie.ch/preise-gymivorbereitung-kurzgymnasium/',
     course_type: 'kurzgymi',
-    intensivTableId: 'tablepress-4',
     anmeldungUrl: 'https://nachhilfeakademie.ch/kurzgymnasium/',
   },
 ];
@@ -112,134 +110,78 @@ async function scrapeProviderMetadata(page: Page): Promise<{
   });
 }
 
-function parseChfPrice(raw: string): number | null {
-  const cleaned = raw.replace(/['\u2019\u0060\s]/g, '').replace(/[^0-9]/g, '');
+function parsePerLessonPrice(raw: string): number | null {
+  const cleaned = raw.replace(/['’`\s]/g, '').replace(/[^0-9]/g, '');
   if (!cleaned) return null;
   const num = parseInt(cleaned, 10);
-  return num >= 100 && num <= 50000 ? num : null;
+  return num > 0 && num <= 500 ? num : null;
 }
 
-function parseDateRange(raw: string): { start: string | null; end: string | null } {
-  const matches = raw.match(/(\d{2}\.\d{2}\.\d{4})/g);
-  if (!matches || matches.length === 0) return { start: null, end: null };
-  const toISO = (d: string) => {
-    const [day, month, year] = d.split('.');
-    return `${year}-${month}-${day}`;
-  };
-  return {
-    start: toISO(matches[0]),
-    end: matches.length > 1 ? toISO(matches[matches.length - 1]) : toISO(matches[0]),
-  };
-}
-
-async function scrapeWochenkurse(
+/**
+ * Seit dem Website-Redesign (Aug 2026) gibt es keine tablepress-Tabellen mit
+ * festen Kursterminen mehr, sondern nur noch Elementor-"Icon-Box"-Preiskarten
+ * ohne Datum/Wochentag/Verfügbarkeit. Nur "Gruppenunterricht" (2er/4er Gruppe)
+ * wird gescrapt, da das am ehesten mit den Gruppenkursen der anderen Anbieter
+ * vergleichbar ist. Einzelunterricht (Pro-Lektion-Tarif) und Ferienkurse
+ * (ebenfalls ohne feste Termine) werden bewusst ausgelassen.
+ */
+async function scrapeGruppenunterricht(
   page: Page,
   courseType: string,
   standorte: string,
-  pageUrl: string,
   anmeldungUrl: string,
 ): Promise<any[]> {
   const courses: any[] = [];
 
   try {
-    await page.waitForSelector('table#tablepress-2 tbody tr', { timeout: 15000 });
+    await page.waitForSelector('.elementor-icon-box-title', { timeout: 15000 });
   } catch {
-    console.warn('  Warnung: tablepress-2 (Wochenkurse) nicht innerhalb 15s gefunden.');
+    console.warn('  Warnung: Preiskarten (.elementor-icon-box-title) nicht innerhalb 15s gefunden.');
     return courses;
   }
 
-  const rows = await page.evaluate(() => {
-    const table = document.querySelector('table#tablepress-2');
-    if (!table) return [];
-    return Array.from(table.querySelectorAll('tbody tr')).map(row => {
-      const cols = row.querySelectorAll('td');
-      if (cols.length < 6) return null;
-      return {
-        lektionenProWoche: cols[0].textContent?.trim() || '',
-        fach:              cols[1].textContent?.trim() || '',
-        totalLektionen:    cols[2].textContent?.trim() || '',
-        kostenPrivat:      cols[3].textContent?.trim() || '',
-        kosten2er:         cols[4].textContent?.trim() || '',
-        kosten4er:         cols[5].textContent?.trim() || '',
-      };
-    }).filter(Boolean);
+  const tiers = await page.evaluate(() => {
+    const results: { title: string; description: string; priceText: string }[] = [];
+    const titleEls = Array.from(document.querySelectorAll('.elementor-icon-box-title'));
+    for (const titleEl of titleEls) {
+      const title = titleEl.textContent?.trim() || '';
+      if (!/^(2er|4er) Gruppe$/.test(title)) continue;
+
+      const description = titleEl.parentElement
+        ?.querySelector('.elementor-icon-box-description')
+        ?.textContent?.trim() || '';
+
+      const container = titleEl.closest('.e-child');
+      const priceText = container
+        ? Array.from(container.querySelectorAll('.elementor-widget-text-editor p'))
+            .map(p => p.textContent?.trim() || '')
+            .find(t => /CHF/i.test(t)) || ''
+        : '';
+
+      results.push({ title, description, priceText });
+    }
+    return results;
   });
 
-  for (const row of rows) {
-    if (!row || !row.fach) continue;
-    courses.push({
-      provider_id:      PROVIDER_ID,
-      title:            `Wöchentlicher Kurs – ${row.fach} (${row.lektionenProWoche})`,
-      price_chf:        parseChfPrice(row.kosten4er),
-      location:         standorte,
-      occurrence:       row.lektionenProWoche,
-      course_type:      courseType,
-      course_url:       anmeldungUrl,
-      is_online:        false,
-      verfuegbarkeit:   null,
-      last_scraped_at:  new Date().toISOString(),
-      scraper_method:   'puppeteer',  // ← neu
-    });
-  }
-
-  console.log(`  → ${courses.length} Wochenkurs-Zeilen (tablepress-2)`);
-  return courses;
-}
-
-async function scrapeIntensivkurse(
-  page: Page,
-  courseType: string,
-  standorte: string,
-  pageUrl: string,
-  anmeldungUrl: string,
-  tableId: string,
-): Promise<any[]> {
-  const courses: any[] = [];
-
-  try {
-    await page.waitForSelector(`table#${tableId} tbody tr`, { timeout: 10000 });
-  } catch {
-    console.warn(`  Warnung: ${tableId} (Intensivkurse) nicht innerhalb 10s gefunden.`);
-    return courses;
-  }
-
-  const rows = await page.evaluate((tid: string) => {
-    const table = document.querySelector(`table#${tid}`);
-    if (!table) return [];
-    return Array.from(table.querySelectorAll('tbody tr')).map(row => {
-      const cols = row.querySelectorAll('td');
-      if (cols.length < 5) return null;
-      return {
-        name:         cols[0].textContent?.trim() || '',
-        datum:        cols[1].textContent?.trim() || '',
-        lektionen:    cols[2].textContent?.trim() || '',
-        kostenPrivat: cols[3].textContent?.trim() || '',
-        kostenGruppe: cols[4].textContent?.trim() || '',
-      };
-    }).filter(Boolean);
-  }, tableId);
-
-  for (const row of rows) {
-    if (!row || !row.name) continue;
-    const { start, end } = parseDateRange(row.datum);
+  for (const tier of tiers) {
+    const price = parsePerLessonPrice(tier.priceText);
+    if (price === null) continue;
     courses.push({
       provider_id:     PROVIDER_ID,
-      title:           `Intensivkurs ${row.name} – ${row.lektionen}`,
-      price_chf:       parseChfPrice(row.kostenGruppe),
+      title:           `Gruppenunterricht ${tier.title} (${tier.description})`,
+      price_chf:       price,
       location:        standorte,
-      occurrence:      row.datum,
+      occurrence:      tier.description,
       course_type:     courseType,
       course_url:      anmeldungUrl,
-      start_date:      start,
-      end_date:        end,
-      is_online:       false,
+      is_online:        false,
       verfuegbarkeit:  null,
       last_scraped_at: new Date().toISOString(),
       scraper_method:  'puppeteer',
     });
   }
 
-  console.log(`  → ${courses.length} Intensivkurse (${tableId})`);
+  console.log(`  → ${courses.length} Gruppenunterricht-Tarif(e)`);
   return courses;
 }
 
@@ -316,25 +258,12 @@ async function scrapeNachhilfeAkademie(): Promise<void> {
         console.log(`\nLade: ${entry.url}`);
         await page.goto(entry.url, { waitUntil: 'networkidle2', timeout: 60000 });
 
-        const [wochenkurse, intensivkurse] = await Promise.all([
-          scrapeWochenkurse(
-            page,
-            entry.course_type,
-            metadata.standorte,
-            entry.url,
-            entry.anmeldungUrl
-          ),
-          scrapeIntensivkurse(
-            page,
-            entry.course_type,
-            metadata.standorte,
-            entry.url,
-            entry.anmeldungUrl,
-            entry.intensivTableId
-          ),
-        ]);
-
-        const allCourses = [...wochenkurse, ...intensivkurse];
+        const allCourses = await scrapeGruppenunterricht(
+          page,
+          entry.course_type,
+          metadata.standorte,
+          entry.anmeldungUrl
+        );
 
         if (allCourses.length === 0) {
           await logScrapeError(
@@ -351,10 +280,7 @@ async function scrapeNachhilfeAkademie(): Promise<void> {
           await logScrapeError(runId, PROVIDER_ID, 'INSERT_ERROR', error.message);
           errorCount++;
         } else {
-          console.log(
-            `✓ ${allCourses.length} Kurse gespeichert` +
-            ` (${wochenkurse.length} Wochen + ${intensivkurse.length} Intensiv)`
-          );
+          console.log(`✓ ${allCourses.length} Kurse gespeichert`);
           coursesFound += allCourses.length;
           allCourses.slice(0, 3).forEach((c: any) => {
             console.log(
