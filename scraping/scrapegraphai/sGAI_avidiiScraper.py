@@ -33,6 +33,7 @@ from scrape_utils import (
     extract_json_from_string,
     record_price_history,
     log_scrape_error,
+    save_courses,
     ScrapeRun,
 )
 
@@ -299,37 +300,19 @@ def main():
             log_scrape_error(run.id, PROVIDER_ID, "METADATA_ERROR", msg)
             run.error_count += 1
 
-        # Alte SGI-Kurse löschen und neue schreiben
-        supabase.table("courses").delete() \
-            .eq("provider_id", PROVIDER_ID) \
-            .eq("scraper_method", SCRAPER_METHOD) \
-            .execute()
-        print("  Alte ScrapeGraphAI-Kurse gelöscht.")
-
-        if all_courses:
-            try:
-                supabase.table("courses").insert(all_courses).execute()
-                run.courses_found = len(all_courses)
-                print(f"  ✓ {len(all_courses)} Kurs(e) gespeichert")
-
-                # Preisverlauf pro course_type
-                for course_type in ("langgymi", "kurzgymi"):
-                    typed = [
-                        c for c in all_courses
-                        if c["course_type"] == course_type and c["price_chf"]
-                    ]
-                    if typed:
-                        avg_price = round(sum(c["price_chf"] for c in typed) / len(typed))
-                        record_price_history(PROVIDER_ID, course_type, avg_price)
-            except Exception as e:
-                msg = f"Fehler beim Insert der Kurse: {e}"
-                print(f"  ✗ {msg}")
-                log_scrape_error(run.id, PROVIDER_ID, "INSERT_ERROR", msg)
-                run.error_count += 1
-        else:
-            log_scrape_error(run.id, PROVIDER_ID, "NO_COURSES_FOUND",
-                             "Keine Kurse in allen URLs gefunden.")
-            run.error_count += 1
+        # Alte SGI-Kurse nur löschen, wenn tatsächlich Ersatzdaten da sind
+        # (siehe save_courses() in scrape_utils.py - verhindert Datenverlust
+        # bei komplett fehlgeschlagenem Scrape, z. B. BFH-LLM-Rate-Limit).
+        if save_courses(run, all_courses, "ScrapeGraphAI-Kurse"):
+            # Preisverlauf pro course_type
+            for course_type in ("langgymi", "kurzgymi"):
+                typed = [
+                    c for c in all_courses
+                    if c["course_type"] == course_type and c["price_chf"]
+                ]
+                if typed:
+                    avg_price = round(sum(c["price_chf"] for c in typed) / len(typed))
+                    record_price_history(PROVIDER_ID, course_type, avg_price)
 
     print(f"\n✓ {PROVIDER_NAME} Scraping abgeschlossen")
 

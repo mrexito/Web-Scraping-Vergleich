@@ -369,6 +369,60 @@ def record_price_history(provider_id: int, course_type: str,
         print(f"✗ Fehler beim Speichern der price_history: {e}")
 
 
+def save_courses(run: "ScrapeRun", courses: list, log_label: str = "Kurse") -> bool:
+    """Ersetzt die Kurse eines Providers/einer Methode nur, wenn tatsächlich
+    neue Daten vorhanden sind.
+
+    Löscht NICHT einfach immer zuerst: Ein komplett fehlgeschlagener Scrape
+    (z. B. BFH-LLM-Rate-Limit) würde sonst die alten, noch gültigen Kurse
+    entfernen, ohne dass etwas Neues nachkommt. Stattdessen:
+      - courses vorhanden -> alte Kurse löschen, neue einfügen.
+      - courses leer UND bisher keine Fehler in diesem Lauf -> echtes
+        Nullergebnis (Anbieter aktuell ohne Kurse), alte/veraltete Kurse
+        dürfen gelöscht werden.
+      - courses leer UND bereits Fehler in diesem Lauf -> vermutlich eine
+        fehlgeschlagene Extraktion, keine echte Null. Alte Kurse bleiben
+        unangetastet.
+
+    Gibt True zurück, wenn courses erfolgreich gespeichert wurden (Aufrufer
+    kann dann z. B. record_price_history() ausführen).
+    """
+    if courses:
+        try:
+            supabase.table("courses").delete() \
+                .eq("provider_id", run.provider_id) \
+                .eq("scraper_method", run.scraper_method) \
+                .execute()
+            print(f"  Alte {log_label} gelöscht.")
+            supabase.table("courses").insert(courses).execute()
+            run.courses_found = len(courses)
+            print(f"  ✓ {len(courses)} Kurs(e) gespeichert")
+            return True
+        except Exception as e:
+            msg = f"Fehler beim Insert der Kurse: {e}"
+            print(f"  ✗ {msg}")
+            log_scrape_error(run.id, run.provider_id, "INSERT_ERROR", msg)
+            run.error_count += 1
+            return False
+
+    if run.error_count == 0:
+        supabase.table("courses").delete() \
+            .eq("provider_id", run.provider_id) \
+            .eq("scraper_method", run.scraper_method) \
+            .execute()
+        print(f"  Alte {log_label} gelöscht (Anbieter aktuell ohne Kurse).")
+        log_scrape_error(run.id, run.provider_id, "NO_COURSES_FOUND", "Keine Kurse gefunden.")
+        run.error_count += 1
+        return False
+
+    print(f"  Alte {log_label} NICHT gelöscht (vorherige Fehler in diesem Lauf - "
+          f"vermutlich fehlgeschlagene Extraktion statt echtem Nullergebnis).")
+    log_scrape_error(run.id, run.provider_id, "NO_COURSES_FOUND",
+                     "Keine Kurse gefunden - alte Daten wegen vorheriger Fehler behalten.")
+    run.error_count += 1
+    return False
+
+
 # =====================================================================
 # 6. SCRAPERUN CONTEXT MANAGER
 # =====================================================================

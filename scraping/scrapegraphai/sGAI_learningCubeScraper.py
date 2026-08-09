@@ -26,6 +26,7 @@ from scrape_utils import (
     merge_metadata,
     record_price_history,
     log_scrape_error,
+    save_courses,
     ScrapeRun,
 )
 
@@ -291,34 +292,13 @@ def main():
             log_scrape_error(run.id, PROVIDER_ID, "METADATA_ERROR", msg)
             run.error_count += 1
 
-        # Alte Kurse löschen und neue schreiben
-        supabase.table("courses").delete() \
-            .eq("provider_id", PROVIDER_ID) \
-            .eq("scraper_method", SCRAPER_METHOD) \
-            .execute()
-        print("  Alte ScrapeGraphAI-Kurse gelöscht.")
-
-        if all_courses:
-            try:
-                supabase.table("courses").insert(all_courses).execute()
-                run.courses_found = len(all_courses)
-                print(f"  ✓ {len(all_courses)} Kurs(e) gespeichert")
-
-                for course_type in ("langgymi", "kurzgymi"):
-                    typed = [c for c in all_courses
-                             if c["course_type"] == course_type and c["price_chf"] is not None]
-                    if typed:
-                        avg = round(sum(c["price_chf"] for c in typed) / len(typed))
-                        record_price_history(PROVIDER_ID, course_type, avg)
-            except Exception as e:
-                msg = f"Fehler beim Insert: {e}"
-                print(f"  ✗ {msg}")
-                log_scrape_error(run.id, PROVIDER_ID, "INSERT_ERROR", msg)
-                run.error_count += 1
-        else:
-            log_scrape_error(run.id, PROVIDER_ID, "NO_COURSES_FOUND",
-                             "Keine Kurse in allen URLs gefunden.")
-            run.error_count += 1
+        if save_courses(run, all_courses, "ScrapeGraphAI-Kurse"):
+            for course_type in ("langgymi", "kurzgymi"):
+                typed = [c for c in all_courses
+                         if c["course_type"] == course_type and c["price_chf"] is not None]
+                if typed:
+                    avg = round(sum(c["price_chf"] for c in typed) / len(typed))
+                    record_price_history(PROVIDER_ID, course_type, avg)
 
     print(f"\n✓ {PROVIDER_NAME} abgeschlossen")
 

@@ -176,6 +176,7 @@ async function scrapeLernForum(): Promise<void> {
   let browser: Browser | null = null;
   let coursesFound = 0;
   let errorCount = 0;
+  let oldCoursesDeleted = false;
 
   const runId = await startScrapeRun('puppeteer', PROVIDER_ID);
   if (!runId) { console.error('Konnte keinen Scrape-Run starten. Abbruch.'); return; }
@@ -227,12 +228,9 @@ async function scrapeLernForum(): Promise<void> {
       console.log('✓ CourseDetails Metadaten aktualisiert');
     }
 
-    // Alte Kurse löschen (nur puppeteer-Kurse)
-    await supabase.from('courses').delete()
-      .eq('provider_id', PROVIDER_ID)
-      .eq('scraper_method', 'puppeteer');
-    console.log('Alte Kurse gelöscht.');
-
+    // Alte Kurse werden erst gelöscht, sobald der erste erfolgreiche Scrape
+    // neue Daten liefert (siehe unten) - verhindert, dass ein komplett
+    // fehlgeschlagener Lauf die Datenbank leer lässt.
     for (const entry of urls) {
       let page: Page | null = null;
       try {
@@ -246,6 +244,14 @@ async function scrapeLernForum(): Promise<void> {
           await logScrapeError(runId, PROVIDER_ID, 'NO_COURSES_FOUND', `Keine Kurse gefunden auf ${entry.url}`);
           errorCount++;
           continue;
+        }
+
+        if (!oldCoursesDeleted) {
+          await supabase.from('courses').delete()
+            .eq('provider_id', PROVIDER_ID)
+            .eq('scraper_method', 'puppeteer');
+          console.log('Alte Kurse gelöscht.');
+          oldCoursesDeleted = true;
         }
 
         const { error } = await supabase.from('courses').insert(courses);

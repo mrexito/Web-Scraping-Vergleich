@@ -25,6 +25,7 @@ from scrape_utils import (
     extract_json_from_string,
     record_price_history,
     log_scrape_error,
+    save_courses,
     ScrapeRun,
 )
 
@@ -246,33 +247,16 @@ def main():
             log_scrape_error(run.id, PROVIDER_ID, "METADATA_ERROR", str(e))
             run.error_count += 1
 
-        supabase.table("courses").delete() \
-            .eq("provider_id", PROVIDER_ID) \
-            .eq("scraper_method", SCRAPER_METHOD) \
-            .execute()
-        print("  Alte ScrapeGraphAI-Kurse gelöscht.")
-
-        if unique:
-            try:
-                supabase.table("courses").insert(unique).execute()
-                run.courses_found = len(unique)
-                print(f"  ✓ {len(unique)} Kurs(e) gespeichert")
-
-                # Nur vollständige Kurse (>3000 CHF) in price_history
-                for course_type in ("langgymi", "kurzgymi"):
-                    typed = [c for c in unique
-                             if c["course_type"] == course_type
-                             and c["price_chf"] is not None
-                             and c["price_chf"] >= 3000]
-                    if typed:
-                        avg = round(sum(c["price_chf"] for c in typed) / len(typed))
-                        record_price_history(PROVIDER_ID, course_type, avg)
-            except Exception as e:
-                log_scrape_error(run.id, PROVIDER_ID, "INSERT_ERROR", str(e))
-                run.error_count += 1
-        else:
-            log_scrape_error(run.id, PROVIDER_ID, "NO_COURSES_FOUND", "Keine Kurse.")
-            run.error_count += 1
+        if save_courses(run, unique, "ScrapeGraphAI-Kurse"):
+            # Nur vollständige Kurse (>3000 CHF) in price_history
+            for course_type in ("langgymi", "kurzgymi"):
+                typed = [c for c in unique
+                         if c["course_type"] == course_type
+                         and c["price_chf"] is not None
+                         and c["price_chf"] >= 3000]
+                if typed:
+                    avg = round(sum(c["price_chf"] for c in typed) / len(typed))
+                    record_price_history(PROVIDER_ID, course_type, avg)
 
     print(f"\n✓ {PROVIDER_NAME} abgeschlossen")
 

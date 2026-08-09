@@ -25,6 +25,7 @@ from scrape_utils import (
     extract_json_from_string,
     record_price_history,
     log_scrape_error,
+    save_courses,
     ScrapeRun,
 )
 
@@ -217,33 +218,14 @@ def main():
             log_scrape_error(run.id, PROVIDER_ID, "METADATA_ERROR", msg)
             run.error_count += 1
 
-        supabase.table("courses").delete() \
-            .eq("provider_id", PROVIDER_ID) \
-            .eq("scraper_method", SCRAPER_METHOD) \
-            .execute()
-        print("  Alte ScrapeGraphAI-Kurse gelöscht.")
-
-        if courses:
-            try:
-                supabase.table("courses").insert(courses).execute()
-                run.courses_found = len(courses)
-                print(f"  ✓ {len(courses)} Kurs(e) gespeichert")
-
-                for course_type in ("langgymi", "kurzgymi"):
-                    typed = [c for c in courses
-                             if c["course_type"] == course_type and c["price_chf"]]
-                    if typed:
-                        avg = round(sum(c["price_chf"] for c in typed) / len(typed))
-                        record_price_history(PROVIDER_ID, course_type, avg)
-                        print(f"  ✓ price_history {course_type}: avg CHF {avg}")
-            except Exception as e:
-                msg = f"Fehler beim Insert: {e}"
-                print(f"  ✗ {msg}")
-                log_scrape_error(run.id, PROVIDER_ID, "INSERT_ERROR", msg)
-                run.error_count += 1
-        else:
-            log_scrape_error(run.id, PROVIDER_ID, "NO_COURSES_FOUND", "Keine Kurse gefunden.")
-            run.error_count += 1
+        if save_courses(run, courses, "ScrapeGraphAI-Kurse"):
+            for course_type in ("langgymi", "kurzgymi"):
+                typed = [c for c in courses
+                         if c["course_type"] == course_type and c["price_chf"]]
+                if typed:
+                    avg = round(sum(c["price_chf"] for c in typed) / len(typed))
+                    record_price_history(PROVIDER_ID, course_type, avg)
+                    print(f"  ✓ price_history {course_type}: avg CHF {avg}")
 
     print(f"\n✓ {PROVIDER_NAME} abgeschlossen")
 
