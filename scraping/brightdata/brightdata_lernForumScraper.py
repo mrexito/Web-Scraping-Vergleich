@@ -3,15 +3,20 @@ brightdata_lernForumScraper.py
 ================================
 Bright Data Trigger-Skript für Lern-Forum (PROVIDER_ID = 2).
 
-Verarbeitet das Bright Data Output (JSON oder CSV) wie folgt:
+Collector-Schema (Stand aktuell): FLACHE Liste, eine Zeile pro Kurs, mit
+deutschen Feldnamen. Zwei Felder sind im Collector-Template offenbar falsch
+verdrahtet: "Uhrzeit" enthält tatsächlich ein Datum (z.B. "22.08.26"),
+"Startdatum" enthält tatsächlich eine Zielstufen-Angabe (z.B. "6. Klasse",
+"2./3. Sek"). Weder Preis noch Ort noch ein echtes End-Datum werden geliefert.
 
-  1. Metadaten-Booleans + max_teilnehmer + standorte
-     → GymiProviders + CourseDetails Tabelle
-  2. Kurse-Array (95 Kurse von der Übersichtsseite)
-     → courses Tabelle, mit folgenden Korrekturen in Python:
-        - course_type aus course_name ableiten (Bright Data labelt alle als "kurzgymi")
-        - weekday-Tag aus course_name extrahieren und prependen
-        - course_name normalisieren (\\n raus)
+Verarbeitet das Bright Data Output wie folgt:
+  1. course_type aus "Kursart" (Fallback: aus course_name, da einige Zeilen
+     kein Kursart-Feld haben)
+  2. "Wochentag" wird direkt übernommen (korrekt beschriftet)
+  3. Start-Datum wird aus dem fehlbeschrifteten "Uhrzeit"-Feld extrahiert
+  4. Preis, Ort, End-Datum, Verfügbarkeit bleiben NULL (nicht vorhanden)
+  5. GymiProviders/CourseDetails werden NICHT mehr aktualisiert — der
+     Collector liefert keine Provider-weiten Metadaten-Booleans mehr
 
 Voraussetzung auf brightdata.com:
   - Data Collector erstellt
@@ -19,9 +24,6 @@ Voraussetzung auf brightdata.com:
     (eine URL reicht — der Collector findet beide Tabs)
   - Collector-ID in .env als BRIGHT_DATA_COLLECTOR_ID_LERNFORUM
 """
-import csv
-import io
-import json
 import os
 import re
 import sys
@@ -35,10 +37,7 @@ if _SGAI_DIR not in sys.path:
     sys.path.insert(0, _SGAI_DIR)
 
 from scrape_utils import (
-    supabase,
-    parse_price,
     convert_date,
-    record_price_history,
     log_scrape_error,
     save_courses,
     ScrapeRun,
@@ -60,12 +59,6 @@ COLLECTOR_ID          = os.getenv("BRIGHT_DATA_COLLECTOR_ID_LERNFORUM")
 # Eine URL reicht — der Collector findet beide Tabs auf der Übersichtsseite
 URLS = [
     {"url": "https://www.lern-forum.ch/gymivorbereitung-zuerich"},
-]
-
-# Wochentage für die weekday-Extraktion aus course_name
-WEEKDAYS = [
-    "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag",
-    "Samstag", "Sonntag",
 ]
 
 
@@ -110,40 +103,6 @@ def wait_for_results(job_id: str, max_wait: int = 180) -> list:
     raise TimeoutError(f"Bright Data Job {job_id} hat nach {max_wait}s keine Ergebnisse geliefert.")
 
 
-def parse_bd_data(raw_data) -> list:
-    """Bright Data kann JSON oder CSV-strings liefern.
-
-    Diese Funktion normalisiert beide Formate auf eine Liste von Entries,
-    wobei courses und standorte (falls als JSON-string vorhanden) geparst
-    werden.
-    """
-    if not raw_data:
-        return []
-
-    # Wenn es bereits eine Liste von Dicts mit gemischten Typen ist
-    if isinstance(raw_data, list):
-        normalized = []
-        for entry in raw_data:
-            if not isinstance(entry, dict):
-                continue
-            # courses kann als String (CSV-Modus) oder als Liste (JSON) kommen
-            if isinstance(entry.get("courses"), str):
-                try:
-                    entry["courses"] = json.loads(entry["courses"])
-                except json.JSONDecodeError:
-                    entry["courses"] = []
-            # standorte kann auch ein String sein
-            if isinstance(entry.get("standorte"), str):
-                try:
-                    entry["standorte"] = json.loads(entry["standorte"])
-                except json.JSONDecodeError:
-                    entry["standorte"] = []
-            normalized.append(entry)
-        return normalized
-
-    return []
-
-
 def clean_course_name(name: str) -> str:
     """Entfernt Newlines/extra spaces aus dem course_name."""
     if not name:
@@ -151,22 +110,8 @@ def clean_course_name(name: str) -> str:
     return re.sub(r"\s+", " ", name.replace("\n", " ")).strip()
 
 
-def extract_weekday_from_name(course_name: str) -> str | None:
-    """Sucht den Wochentag im course_name (Samstag, Mittwoch, etc.)."""
-    if not course_name:
-        return None
-    for day in WEEKDAYS:
-        if day in course_name:
-            return day
-    return None
-
-
 def determine_course_type(course_name: str) -> str | None:
-    """Leitet den Kurstyp aus dem course_name ab.
-
-    Wichtig: Das Bright-Data-Schema labelt fälschlicherweise alle Kurse
-    als 'kurzgymi'. Wir korrigieren das hier basierend auf course_name.
-    """
+    """Leitet den Kurstyp aus dem course_name ab (Fallback für Zeilen ohne Kursart)."""
     if not course_name:
         return None
     name_lower = course_name.lower()
@@ -177,81 +122,27 @@ def determine_course_type(course_name: str) -> str | None:
     return None
 
 
-def normalize_availability(raw):
-    """Normalisiert availability_status auf viele/wenige/ausgebucht."""
-    if not raw:
-        return None
-    raw_lower = str(raw).strip().lower()
-    if "ausgebucht" in raw_lower or "voll" in raw_lower:
-        return "ausgebucht"
-    if "wenige" in raw_lower:
-        return "wenige"
-    if "viele" in raw_lower or "frei" in raw_lower or "verfügbar" in raw_lower:
-        return "viele"
-    return None
+def map_course_type(kursart: str | None, course_name: str) -> str | None:
+    """Leitet course_type primär aus 'Kursart' ab, sonst aus course_name."""
+    if kursart:
+        kl = kursart.lower()
+        if "langzeit" in kl:
+            return "langgymi"
+        if "kurzzeit" in kl:
+            return "kurzgymi"
+    return determine_course_type(course_name)
 
 
-def normalize_location(loc: str) -> str | None:
-    """Normalisiert location: 'Zu Hause' und Varianten → 'online'."""
-    if not loc:
-        return None
-    loc_lower = loc.strip().lower()
-    if loc_lower in ("zu hause", "zuhause", "online"):
-        return "online"
-    return loc.strip()
+def extract_start_date(uhrzeit: str | None) -> str | None:
+    """Extrahiert ein Datum aus dem fehlbeschrifteten 'Uhrzeit'-Feld.
 
-
-# =====================================================================
-# METADATEN-UPDATE: GymiProviders + CourseDetails
-# =====================================================================
-def update_provider_metadata(metadata: dict, run_id: str):
-    """Schreibt die Stammdaten in GymiProviders und CourseDetails.
-
-    Analog zum Puppeteer- und ScrapeGraphAI-Scraper, damit der
-    Drei-Wege-Vergleich auf identischer Datenbasis möglich ist.
+    Werte sehen aus wie '22.08.26' oder 'Sa 13.02.27' — ein optionales
+    Wochentags-Kürzel vor dem eigentlichen dd.mm.yy-Datum.
     """
-    if not metadata:
-        print("  ⚠ Keine Metadaten verfügbar — Schritt übersprungen")
-        return
-
-    max_t = metadata.get("max_teilnehmer")
-    max_t_str = str(int(max_t)) if max_t and isinstance(max_t, (int, float)) else None
-
-    standorte = metadata.get("standorte", [])
-    if isinstance(standorte, list) and standorte:
-        standort_str = ", ".join(str(s) for s in standorte if s)
-    else:
-        standort_str = "Zürich"
-
-    # GymiProviders: Anbieter-weite Stammdaten
-    try:
-        supabase.table("GymiProviders").update({
-            "E-Learning":                     bool(metadata.get("e_learning", False)),
-            "Aufsatzkorrektur":               bool(metadata.get("aufsatzkorrektur", False)),
-            "Einstufungstest":                bool(metadata.get("einstufungstest", False)),
-            "Einzelkurse":                    bool(metadata.get("einzelkurse", False)),
-            "Pruefungssimultaion":            bool(metadata.get("pruefungssimulation", False)),
-            "Maximale Anzahl der Teilnehmer": max_t_str,
-        }).eq("ID", PROVIDER_ID).execute()
-        print("  ✓ GymiProviders aktualisiert")
-    except Exception as e:
-        msg = f"GymiProviders Update fehlgeschlagen: {e}"
-        print(f"  ✗ {msg}")
-        log_scrape_error(run_id, PROVIDER_ID, "METADATA_ERROR", msg)
-
-    # CourseDetails: Kurs-spezifische Stammdaten
-    try:
-        supabase.table("CourseDetails").update({
-            "Pruefungsarchiv":       bool(metadata.get("pruefungsarchiv", False)),
-            "Beratungsgespraech":    bool(metadata.get("beratungsgespraech", False)),
-            "Eigene Lernunterlagen": bool(metadata.get("lernunterlagen", False)),
-            "Standort":              standort_str,
-        }).eq("ID", PROVIDER_ID).execute()
-        print("  ✓ CourseDetails aktualisiert")
-    except Exception as e:
-        msg = f"CourseDetails Update fehlgeschlagen: {e}"
-        print(f"  ✗ {msg}")
-        log_scrape_error(run_id, PROVIDER_ID, "METADATA_ERROR", msg)
+    if not uhrzeit:
+        return None
+    m = re.search(r"\d{1,2}\.\d{1,2}\.\d{2,4}", str(uhrzeit))
+    return convert_date(m.group(0)) if m else None
 
 
 # =====================================================================
@@ -260,77 +151,48 @@ def update_provider_metadata(metadata: dict, run_id: str):
 def transform_courses(entries: list) -> list:
     """Transformiert die Bright Data Entries in das Supabase-Format.
 
-    Wichtig:
-    - Es werden nur Kurse aus dem ersten Entry verarbeitet (Übersichtsseite),
-      da diese bereits beide Tabs (Lang + Kurz) enthält.
-    - course_type wird aus course_name korrigiert (BD labelt falsch).
-    - weekday wird aus course_name + Zeit zusammengesetzt.
+    Flache Liste, ein Element pro Kurstermin. Preis, Ort, End-Datum und
+    Verfügbarkeit liefert der Collector aktuell nicht (bleiben NULL).
     """
     courses = []
-
-    if not entries:
-        return courses
-
-    # Wir nutzen den ersten Entry, der die Übersichtsseite ist
-    main_entry = entries[0]
-    raw_courses = main_entry.get("courses", [])
-
-    if not isinstance(raw_courses, list):
-        print(f"  ⚠ courses ist kein Array: {type(raw_courses).__name__}")
-        return courses
-
-    source_url = main_entry.get("input_url") or \
-                 main_entry.get("input", {}).get("url") if isinstance(main_entry.get("input"), dict) else None
-    source_url = source_url or "https://www.lern-forum.ch/gymivorbereitung-zuerich"
-
     skipped = 0
 
-    for raw in raw_courses:
+    for raw in entries:
         if not isinstance(raw, dict):
             continue
 
-        # course_name säubern
-        course_name = clean_course_name(raw.get("course_name", ""))
+        course_name = clean_course_name(raw.get("Kursname", ""))
+        if not course_name:
+            skipped += 1
+            continue
 
-        # course_type aus course_name korrigieren
-        course_type = determine_course_type(course_name)
+        course_type = map_course_type(raw.get("Kursart"), course_name)
         if course_type is None:
             skipped += 1
-            continue  # Kurs ohne erkennbaren Typ überspringen
+            continue
 
-        # weekday aus name + time zusammensetzen
-        time_str = (raw.get("weekday") or "").strip()
-        day = extract_weekday_from_name(course_name)
-        if day and time_str:
-            occurrence = f"{day} {time_str}"
-        elif day:
-            occurrence = day
-        elif time_str:
-            occurrence = time_str
-        else:
-            occurrence = None
-
-        # location normalisieren
-        location = normalize_location(raw.get("location"))
+        url = raw.get("product_page_url") \
+            or (raw.get("input") or {}).get("url") \
+            or "https://www.lern-forum.ch/gymivorbereitung-zuerich"
 
         courses.append({
             "provider_id":     PROVIDER_ID,
             "title":           course_name,
-            "price_chf":       parse_price(raw.get("price_chf")),
-            "location":        location,
-            "occurrence":      occurrence,
+            "price_chf":       None,
+            "location":        None,
+            "occurrence":      clean_course_name(raw.get("Wochentag", "")) or None,
             "course_type":     course_type,
-            "course_url":      source_url,
-            "is_online":       location == "online" if location else False,
-            "verfuegbarkeit":  normalize_availability(raw.get("availability_status")),
-            "start_date":      convert_date(raw.get("start_date")),
-            "end_date":        convert_date(raw.get("end_date")),
+            "course_url":      url,
+            "is_online":       bool(raw.get("Online_Kurs")),
+            "verfuegbarkeit":  None,
+            "start_date":      extract_start_date(raw.get("Uhrzeit")),
+            "end_date":        None,
             "last_scraped_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "scraper_method":  SCRAPER_METHOD,
         })
 
     if skipped:
-        print(f"  ⚠ {skipped} Kurs(e) ohne erkennbaren Kurstyp übersprungen")
+        print(f"  ⚠ {skipped} Kurs(e) ohne Namen/erkennbaren Kurstyp übersprungen")
 
     return courses
 
@@ -366,30 +228,18 @@ def main():
             run.error_count += 1
             return
 
-        # 3. Daten parsen (JSON oder CSV)
-        try:
-            entries = parse_bd_data(raw_data)
-            if not entries:
-                msg = "Keine Entries im Bright Data Output."
-                print(f"  ✗ {msg}")
-                log_scrape_error(run.id, PROVIDER_ID, "NO_DATA", msg)
-                run.error_count += 1
-                return
-            print(f"  → {len(entries)} Entry(s) erhalten")
-        except Exception as e:
-            msg = f"Parse-Fehler: {e}"
+        if not isinstance(raw_data, list) or not raw_data:
+            msg = "Keine Entries im Bright Data Output."
             print(f"  ✗ {msg}")
-            log_scrape_error(run.id, PROVIDER_ID, "PARSE_ERROR", msg)
+            log_scrape_error(run.id, PROVIDER_ID, "NO_DATA", msg)
             run.error_count += 1
             return
 
-        # 4. Metadaten in GymiProviders + CourseDetails schreiben
-        # Wir nehmen den ersten Entry als Quelle (Übersichtsseite hat alle Metadaten)
-        update_provider_metadata(entries[0], run.id)
+        print(f"  → {len(raw_data)} Entry(s) erhalten")
 
-        # 5. Kurse transformieren
+        # 3. Kurse transformieren
         try:
-            courses = transform_courses(entries)
+            courses = transform_courses(raw_data)
             print(f"  → {len(courses)} Kurs(e) transformiert")
         except Exception as e:
             msg = f"Transformation fehlgeschlagen: {e}"
@@ -398,16 +248,8 @@ def main():
             run.error_count += 1
             return
 
-        # 6. Alte BD-Kurse nur löschen, wenn tatsächlich Ersatzdaten da sind
-        if save_courses(run, courses, "Bright-Data-Kurse"):
-            # price_history pro course_type
-            for course_type in ("langgymi", "kurzgymi"):
-                typed = [c for c in courses
-                         if c["course_type"] == course_type and c["price_chf"]]
-                if typed:
-                    avg = round(sum(c["price_chf"] for c in typed) / len(typed))
-                    record_price_history(PROVIDER_ID, course_type, avg)
-                    print(f"  ✓ price_history {course_type}: avg CHF {avg}")
+        # 4. Alte BD-Kurse nur löschen, wenn tatsächlich Ersatzdaten da sind
+        save_courses(run, courses, "Bright-Data-Kurse")
 
     print(f"\n✓ {PROVIDER_NAME} Bright Data abgeschlossen")
 

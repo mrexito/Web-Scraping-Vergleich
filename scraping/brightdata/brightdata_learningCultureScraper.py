@@ -7,20 +7,22 @@ Anbieter hat ZWEI separate Detail-Seiten:
   - https://www.learningculture.ch/kurse/langgymi-pruefung
   - https://www.learningculture.ch/kurse/kurzgymi-pruefung
 
-Bright Data liefert pro URL ein Entry zurück.
+Collector-Schema (Stand aktuell): FLACHE Liste, eine Zeile pro Kurs (nicht
+mehr pro URL gruppiert mit verschachteltem "courses"-Array). Felder:
+course_name, course_type (Slug wie "kurzgymi-pruefung"), weekday_time
+(bereits kombiniert, z.B. "Sonntag, 13:30 - 16:00"), location, start_date,
+end_date, price, availability_status, is_online, max_group_size, input.url.
+Provider-weite Metadaten-Booleans liefert der Collector nicht mehr —
+GymiProviders/CourseDetails werden daher NICHT mehr aus diesem Scraper
+aktualisiert.
 
 Verarbeitung:
   1. course_type aus der Source-URL (eindeutig: langgymi/kurzgymi in URL)
-  2. weekday wird direkt aus Bright Data übernommen
-     (Format: "Samstag, 09:30 - 12:00" oder "Mo - Mi, 13:30 - 16:45")
-  3. standorte werden NICHT aus dem Top-Level übernommen (enthält Volltext-Müll
-     bei LearningCulture), sondern aus den einzelnen Kurs-Locations abgeleitet.
-  4. Booleans werden mit ODER über beide Entries aggregiert (Anbieter-weite
-     Eigenschaften — wenn Langgymi-Kurs Aufsatztraining hat, gilt das für
-     den Anbieter als Ganzes).
+  2. weekday_time wird direkt aus Bright Data übernommen (bereits kombiniert)
 
 Voraussetzung auf brightdata.com:
-  - Data Collector mit Schema (10 Top-Level + 7 courses-Felder)
+  - Data Collector mit Schema (course_name, course_type, weekday_time, location,
+    start_date, end_date, price, availability_status, is_online, max_group_size)
   - Collector-ID in .env als BRIGHT_DATA_COLLECTOR_ID_LEARNING_CULTURE
 """
 import os
@@ -36,7 +38,6 @@ if _SGAI_DIR not in sys.path:
     sys.path.insert(0, _SGAI_DIR)
 
 from scrape_utils import (
-    supabase,
     parse_price,
     convert_date,
     record_price_history,
@@ -151,176 +152,52 @@ def determine_course_type_from_url(url: str) -> str | None:
     return None
 
 
-def looks_like_real_location(s: str) -> bool:
-    """Filtert Volltext-Müll aus standorte-Array.
-
-    LearningCulture-Bright-Data liefert in `standorte` u.a. Texte wie
-    'Selbst erstellte Prüfung' oder 'Deutsch: Struktur der drei Aufsatztypen'.
-    Wir filtern: echte Ortsnamen sind kurz, ohne Doppelpunkte/Kommas, und
-    enthalten keine ganzen Sätze.
-    """
-    if not s:
-        return False
-    s = s.strip()
-    if len(s) < 2 or len(s) > 50:
-        return False
-    if ":" in s or s.count(",") > 1 or "(" in s or ")" in s:
-        return False
-    # Häufige Ortskeywords zulassen
-    if "online" in s.lower():
-        return True
-    # Verdächtige Schlüsselwörter (Kursinhalt, nicht Ort)
-    bad_keywords = ["prüfung", "kurs", "aufsatz", "deutsch:", "mathematik:",
-                    "wunsch", "lektion", "tag", "termumformung", "satzbau"]
-    s_lower = s.lower()
-    if any(b in s_lower for b in bad_keywords):
-        return False
-    return True
-
-
-# =====================================================================
-# METADATEN
-# =====================================================================
-def aggregate_metadata(entries: list) -> dict:
-    """Konsolidiert Metadaten aus beiden Entries.
-
-    Booleans: ODER (Anbieter-weite Eigenschaften)
-    max_teilnehmer: erster nicht-null Wert
-    standorte: aus EINZELNEN Kurs-Locations abgeleitet (nicht aus dem
-               Top-Level standorte-Feld, das bei LearningCulture verseucht ist)
-    """
-    if not entries:
-        return {}
-
-    bool_fields = [
-        "pruefungssimulation", "aufsatzkorrektur", "pruefungsarchiv",
-        "e_learning", "einzelkurse", "lernunterlagen", "einstufungstest",
-        "beratungsgespraech",
-    ]
-
-    aggregated = {}
-    for f in bool_fields:
-        aggregated[f] = any(bool(e.get(f)) for e in entries)
-
-    aggregated["max_teilnehmer"] = None
-    for e in entries:
-        if e.get("max_teilnehmer") is not None:
-            aggregated["max_teilnehmer"] = e["max_teilnehmer"]
-            break
-
-    # Standorte aus den einzelnen Kursen sammeln (robuster als das
-    # Top-Level standorte-Feld bei LearningCulture)
-    course_locations = set()
-    for e in entries:
-        for course in e.get("courses", []):
-            loc = normalize_location(course.get("location"))
-            if loc:
-                course_locations.add(loc)
-
-    # Falls aus Kursen nichts kommt, fallback auf gefiltertes Top-Level
-    if not course_locations:
-        for e in entries:
-            for s in (e.get("standorte") or []):
-                if looks_like_real_location(str(s)):
-                    course_locations.add(normalize_location(s))
-
-    aggregated["standorte"] = sorted(course_locations)
-
-    return aggregated
-
-
-def update_provider_metadata(metadata: dict, run_id: str):
-    """Schreibt Stammdaten in GymiProviders und CourseDetails."""
-    if not metadata:
-        print("  ⚠ Keine Metadaten verfügbar — Schritt übersprungen")
-        return
-
-    max_t = metadata.get("max_teilnehmer")
-    max_t_str = str(int(max_t)) if max_t and isinstance(max_t, (int, float)) else None
-
-    standorte = metadata.get("standorte", [])
-    if isinstance(standorte, list) and standorte:
-        standort_str = ", ".join(str(s) for s in standorte if s)
-    else:
-        standort_str = "Zürich"
-
-    try:
-        supabase.table("GymiProviders").update({
-            "E-Learning":                     bool(metadata.get("e_learning", False)),
-            "Aufsatzkorrektur":               bool(metadata.get("aufsatzkorrektur", False)),
-            "Einstufungstest":                bool(metadata.get("einstufungstest", False)),
-            "Einzelkurse":                    bool(metadata.get("einzelkurse", False)),
-            "Pruefungssimultaion":            bool(metadata.get("pruefungssimulation", False)),
-            "Maximale Anzahl der Teilnehmer": max_t_str,
-        }).eq("ID", PROVIDER_ID).execute()
-        print("  ✓ GymiProviders aktualisiert")
-    except Exception as e:
-        msg = f"GymiProviders Update fehlgeschlagen: {e}"
-        print(f"  ✗ {msg}")
-        log_scrape_error(run_id, PROVIDER_ID, "METADATA_ERROR", msg)
-
-    try:
-        supabase.table("CourseDetails").update({
-            "Pruefungsarchiv":       bool(metadata.get("pruefungsarchiv", False)),
-            "Beratungsgespraech":    bool(metadata.get("beratungsgespraech", False)),
-            "Eigene Lernunterlagen": bool(metadata.get("lernunterlagen", False)),
-            "Standort":              standort_str,
-        }).eq("ID", PROVIDER_ID).execute()
-        print("  ✓ CourseDetails aktualisiert")
-    except Exception as e:
-        msg = f"CourseDetails Update fehlgeschlagen: {e}"
-        print(f"  ✗ {msg}")
-        log_scrape_error(run_id, PROVIDER_ID, "METADATA_ERROR", msg)
-
-
 # =====================================================================
 # KURSE-TRANSFORMATION
 # =====================================================================
 def transform_courses(entries: list) -> list:
-    """Transformiert die Bright Data Entries in das Supabase-Format."""
+    """Transformiert die Bright Data Entries in das Supabase-Format.
+
+    Neues Collector-Schema: flache Liste, jedes Element ist bereits ein
+    einzelner Kurs (keine Verschachtelung mehr über ein "courses"-Array).
+    """
     courses = []
     skipped = 0
 
-    for entry in entries:
-        if not isinstance(entry, dict):
+    for raw in entries:
+        if not isinstance(raw, dict):
             continue
 
-        url = entry.get("input", {}).get("url", "")
+        url = raw.get("input", {}).get("url", "")
         course_type = determine_course_type_from_url(url)
 
         if course_type is None:
-            print(f"  ⚠ Entry ohne erkennbare URL übersprungen: {url}")
+            print(f"  ⚠ Kurs ohne erkennbare URL übersprungen: {url}")
             continue
 
-        for raw in entry.get("courses", []):
-            if not isinstance(raw, dict):
-                continue
+        course_name = clean_string(raw.get("course_name"))
+        if not course_name:
+            skipped += 1
+            continue
 
-            course_name = clean_string(raw.get("course_name"))
-            if not course_name:
-                skipped += 1
-                continue
+        occurrence = clean_string(raw.get("weekday_time")) or None
+        location = normalize_location(raw.get("location"))
 
-            weekday = clean_string(raw.get("weekday"))
-            occurrence = weekday if weekday else None
-
-            location = normalize_location(raw.get("location"))
-
-            courses.append({
-                "provider_id":     PROVIDER_ID,
-                "title":           course_name,
-                "price_chf":       parse_price(raw.get("price_chf")),
-                "location":        location,
-                "occurrence":      occurrence,
-                "course_type":     course_type,
-                "course_url":      url,
-                "is_online":       location == "online" if location else False,
-                "verfuegbarkeit":  normalize_availability(raw.get("availability_status")),
-                "start_date":      convert_date(raw.get("start_date")),
-                "end_date":        convert_date(raw.get("end_date")),
-                "last_scraped_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                "scraper_method":  SCRAPER_METHOD,
-            })
+        courses.append({
+            "provider_id":     PROVIDER_ID,
+            "title":           course_name,
+            "price_chf":       parse_price(raw.get("price")),
+            "location":        location,
+            "occurrence":      occurrence,
+            "course_type":     course_type,
+            "course_url":      url,
+            "is_online":       bool(raw.get("is_online")) or (location == "online" if location else False),
+            "verfuegbarkeit":  normalize_availability(raw.get("availability_status")),
+            "start_date":      convert_date(raw.get("start_date")),
+            "end_date":        convert_date(raw.get("end_date")),
+            "last_scraped_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "scraper_method":  SCRAPER_METHOD,
+        })
 
     if skipped:
         print(f"  ⚠ {skipped} Kurs(e) ohne Namen übersprungen")
@@ -365,9 +242,6 @@ def main():
             return
 
         print(f"  → {len(raw_data)} Entry(s) erhalten")
-
-        metadata = aggregate_metadata(raw_data)
-        update_provider_metadata(metadata, run.id)
 
         try:
             courses = transform_courses(raw_data)
